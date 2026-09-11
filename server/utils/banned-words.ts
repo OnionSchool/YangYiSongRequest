@@ -31,7 +31,9 @@ export function validateBannedRule(value: unknown): string {
   if (
     !pattern ||
     pattern.length > 60 ||
-    /\(\?[!=<]|\\[1-9]|(?:\*|\+|\{\d+(?:,\d*)?\})\s*(?:\*|\+|\{)/.test(pattern)
+    /\(\?[!=<]|\\[1-9]|(?:\*|\+|\{\d+(?:,\d*)?\})\s*(?:\*|\+|\{)|\([^)]*(?:\*|\+|\{\d+(?:,\d*)?\})[^)]*\)\s*(?:\*|\+|\{)/.test(
+      pattern
+    )
   ) {
     throw badRequest('BAD_WORD_RULE', '正则规则包含不允许的复杂语法');
   }
