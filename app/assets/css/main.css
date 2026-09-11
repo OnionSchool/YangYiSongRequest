@@ -1,0 +1,206 @@
+/* 设计系统的单一来源。方向与理由见 CONTEXT.md 第 4 节，改这里等于改全站。 */
+@import 'tailwindcss';
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* 语义色走 CSS 变量，深色模式只换一组值。
+   注意：这类 var() 颜色不要叠 Tailwind 的透明度修饰符，bg-paper/50 不会生效。 */
+:root {
+  --c-paper: #faf9f5;
+  --c-paper-hi: #ffffff;
+  --c-paper-deep: #ead9bd;
+  --c-ink: #2b1d14;
+  --c-ink-soft: #6b5445;
+  --c-ink-faint: #a08b78;
+  --c-rule: #d9c4a3;
+  color-scheme: light;
+  --color-orange: #e8c6a3;
+  --color-orange-deep: #d37e63;
+  --brand-button: #f6b285;
+  --brand-button-dark: #d68c4f;
+}
+
+.dark {
+  --c-paper: #141413;
+  --c-paper-hi: #1a1918;
+  --c-paper-deep: #120c08;
+  --c-ink: #f8f3ef;
+  --c-ink-soft: #ccc3b8;
+  --c-ink-faint: #8a7460;
+  --c-rule: #262624;
+  color-scheme: dark;
+  --color-orange: #ef9e82;
+  --color-orange-deep: #b85a3b;
+  --brand-button: #e4a166;
+  --brand-button-dark: #bc763a;
+}
+
+@theme {
+  --color-paper: var(--c-paper);
+  --color-paper-hi: var(--c-paper-hi);
+  --color-paper-deep: var(--c-paper-deep);
+  --color-ink: var(--c-ink);
+  --color-ink-soft: var(--c-ink-soft);
+  --color-ink-faint: var(--c-ink-faint);
+  --color-rule: var(--c-rule);
+
+  --color-orange: #ff5b24;
+  --color-orange-deep: #d8410e;
+  --color-yellow: #e8a33d;
+  --color-indigo: #26356b;
+
+  --font-display: 'Fraunces Variable', 'Songti SC', serif;
+  --font-sans:
+    'Archivo Variable', system-ui, 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei',
+    sans-serif;
+  --font-mono: 'DM Mono', ui-monospace, 'Cascadia Mono', monospace;
+
+  --radius-badge: 8px;
+  --radius-control: 10px;
+  --radius-card: 12px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scrollbar-color: var(--c-ink-faint) transparent;
+  }
+
+  body {
+    background-color: var(--c-paper);
+    color: var(--c-ink);
+    font-family: var(--font-sans);
+    font-variation-settings: 'wght' 420;
+    font-synthesis-weight: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 纸纹：铺在整个视口上的一层极轻噪点。pointer-events: none，不挡交互 */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23g)'/%3E%3C/svg%3E");
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-variation-settings: 'WONK' 1;
+    letter-spacing: -0.01em;
+  }
+
+  /* 点击反馈：按下时整个控件微微缩小。
+     用独立的 scale 属性而不是 transform，这样不会覆盖元素已有的 translate
+     （播出单两侧的翻页按钮就是靠 translate 做垂直居中的）。
+     长得像按钮的链接加 .pressable 就能有同样的反馈。 */
+  button,
+  [role='button'],
+  .pressable {
+    transition: scale 120ms ease-out;
+  }
+
+  button:not(:disabled):active,
+  [role='button']:active,
+  .pressable:active {
+    scale: 0.96;
+  }
+
+  ::selection {
+    background-color: var(--color-orange);
+    color: #fff8ec;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-indigo);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* 导航链接：默认样式 */
+  .pressable {
+    border-radius: var(--radius-badge);
+    border: 1px solid var(--c-rule);
+    color: var(--c-ink-soft);
+    transition: border-color 120ms ease-out;
+  }
+
+  .pressable:hover {
+    border-color: var(--c-ink-soft);
+  }
+
+  .pressable:active {
+    opacity: 0.8;
+  }
+
+  /* 纸卡：所有内容块的基础容器，硬边阴影模拟贴在纸上的印刷块 */
+  .paper-card {
+    background-color: var(--c-paper-hi);
+    border: 1px solid var(--c-rule);
+    border-radius: var(--radius-card);
+    box-shadow: 2px 2px 0 0 color-mix(in srgb, var(--c-ink) 12%, transparent);
+  }
+
+  /* 调音台刻度线，用来分隔区块，比 hr 贴题 */
+  .tick-rule {
+    height: 9px;
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--c-rule) 0 1px,
+      transparent 1px 8px
+    );
+    background-position: bottom;
+    background-repeat: repeat-x;
+  }
+
+  /* 半调网点底纹 */
+  .halftone {
+    background-image: radial-gradient(color-mix(in srgb, var(--c-rule) 24%, transparent) 1px, transparent 1.2px);
+    background-size: 8px 8px;
+  }
+
+  /* 小标签：等宽 + 字距，用于「时段」「音源」这类元信息 */
+  /* 小标签：用于「今天的播出单」「搜索」这类区块名。
+     原来用等宽体，但 DM Mono 没有中文字形，中文会掉到系统等宽体上，
+     和正文完全不是一套字，看着像另一个网站。现在统一走正文字体栈，
+     只靠字号、字距和颜色区分层级。等宽体只留给数字和代码。 */
+  .eyebrow {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    font-variation-settings: 'wght' 560;
+    line-height: 1.2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--c-ink-soft);
+  }
+
+  /* 主操作：橙底配深咖字，约 5.6:1。字色写死，深色模式下不能跟着翻成浅色 */
+  .btn-primary {
+    background-color: var(--brand-button);
+    color: #2b1d14;
+    border-radius: var(--radius-control);
+    font-weight: 600;
+  }
+
+  .btn-primary:hover {
+    background-color: var(--brand-button-dark);
+    color: #fff8ec;
+  }
+}
+
+

@@ -3,49 +3,41 @@
   "version": "0.1.0",
   "private": true,
   "description": "杨村一中校园广播电视台在线点歌系统",
-  "engines": {
-    "node": ">=20"
-  },
-  "workspaces": [
-    "server",
-    "web"
-  ],
+  "type": "module",
   "scripts": {
-    "dev": "concurrently -n kugou,server,web -c cyan,yellow,magenta \"npm:dev:kugou\" \"npm:dev:server\" \"npm:dev:web\"",
-    "dev:kugou": "npm run kugou-api --workspace server",
-    "dev:server": "npm run dev --workspace server",
-    "dev:web": "npm run dev --workspace web",
-    "build": "npm run build --workspace web && npm run build --workspace server",
-    "start:prod": "npm run start --workspace server",
-    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace web",
-    "test": "npm run test --workspace server",
-    "lint": "npx eslint . && npx markdownlint-cli2 \"**/*.md\" --ignore \"node_modules/**\" --ignore \"dist/**\"",
-    "format": "npx prettier --write .",
-    "format:check": "npx prettier --check .",
-    "prepare": "husky"
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "lint": "eslint --ext .js,.ts,.vue .",
+    "lint:fix": "eslint --ext .js,.ts,.vue . --fix",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@pinia/nuxt": "^1.0.2",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@tailwindcss/vite": "4.3.3",
+    "@vueuse/core": "latest",
+    "better-sqlite3": "^13.0.3",
+    "drizzle-orm": "^0.45.2",
+    "h3": "^1.15.11",
+    "jose": "^5.9.6",
+    "nitropack": "^2.10.0",
+    "nuxt": "^4.5.2",
+    "pinia": "^4.0.3",
+    "tailwindcss": "4.3.3",
+    "vue": "^3.5.42"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/better-sqlite3": "^9.6.0",
-    "concurrently": "10.0.5",
-    "drizzle-kit": "^0.31.10",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-vue": "^10.10.0",
+    "eslint-plugin-vue": "^10.11.0",
     "globals": "^17.12.0",
-    "husky": "^9.1.7",
-    "lint-staged": "^17.5.0",
-    "markdownlint-cli2": "^0.23.2",
     "prettier": "^3.9.6",
     "typescript": "6.0.3",
-    "typescript-eslint": "^8.69.0",
+    "typescript-eslint": "^8.70.0",
     "vue-eslint-parser": "^10.4.1"
-  },
-  "comment:overrides": "vue-tsc 3.x 仍然 require typescript/lib/tsc，而 TypeScript 7 的原生版本不再导出这个入口，所以整仓统一压在 6.0.3",
-  "overrides": {
-    "typescript": "6.0.3"
-  },
-  "dependencies": {
-    "drizzle-orm": "^0.45.2"
   }
 }

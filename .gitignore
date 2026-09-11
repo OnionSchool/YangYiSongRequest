@@ -12,3 +12,9 @@ coverage/
 .vite/
 .vscode/
 .idea/
+.nuxt/
+.output/
+.playwright-mcp/
+plans/
+data/
+legacy-server/

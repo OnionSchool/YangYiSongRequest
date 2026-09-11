@@ -13,7 +13,10 @@ export default [
   {
     ignores: [
       'node_modules/**',
+      '.nuxt/**',
+      '.output/**',
       '**/dist/**',
+      'legacy-server/**',
       'server/src/generated/**',
       'web/dist/**',
       'package-lock.json',
@@ -24,6 +27,7 @@ export default [
       globals: {
         ...globals.node,
         ...globals.browser,
+        definePageMeta: 'readonly',
       },
     },
   },
@@ -34,7 +38,12 @@ export default [
       sourceType: 'module',
     },
     rules: {
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
+      // API 与数据库边界尚未完整类型化，先允许现有显式 any。
+      '@typescript-eslint/no-explicit-any': 'off',
     },
   },
   {
@@ -49,6 +58,11 @@ export default [
     rules: {
       'vue/multi-word-component-names': 'off',
       'vue/no-v-html': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        { argsIgnorePattern: '^_', ignoreRestSiblings: true },
+      ],
     },
   },
   {

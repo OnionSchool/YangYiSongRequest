@@ -1,0 +1,217 @@
+import { randomInt } from 'node:crypto';
+import { and, count, eq, gte } from 'drizzle-orm';
+import { db } from './db';
+import { songRequest, schedule, broadcastSlot } from './schema';
+import { GRADE_LABELS, encodeWordList, isGrade, isRequestStatus } from './domain';
+import type { Grade, RequestStatus, SourceId } from './domain';
+import { badRequest, notFound, tooMany } from './errors';
+import { IP_DAILY_LIMIT, IDENTITY_DAILY_LIMIT } from './rate-limits';
+import { shanghaiDayStart } from './time';
+import { isValid6DigitCode } from './runtime';
+import { getSource } from './music-sources';
+import { findBannedHits } from './banned-words';
+import { readSite } from './site';
+
+/**
+ * sane regex safe hex (removes 0 O 1 I L)
+ */
+const CODE_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+
+export function newQueryCode(): string {
+  let code = '';
+  for (let i = 0; i < 6; i += 1) code += CODE_ALPHABET[randomInt(CODE_ALPHABET.length)];
+  return code;
+}
+
+export const isUniqueViolation = (err: unknown): boolean =>
+  typeof err === 'object' &&
+  err !== null &&
+  'code' in (err as any) &&
+  err.code === 'SQLITE_CONSTRAINT_UNIQUE';
+
+export function normalizeIdentity(
+  input: any,
+  required: boolean,
+  classCounts: Record<Grade, number>
+): any | null {
+  const filled =
+    input.grade != null || input.classNo != null || (input.requesterName ?? '').trim() !== '';
+
+  if (!required) {
+    if (filled) throw badRequest('IDENTITY_NOT_REQUIRED', '现在是匿名点歌，不用填身份');
+    return null;
+  }
+
+  const grade = input.grade;
+  if (!isGrade(grade)) throw badRequest('BAD_GRADE', '年级没选对');
+  const max = classCounts[grade];
+  const classNo = Number(input.classNo);
+  if (typeof classNo !== 'number' || !Number.isInteger(classNo) || classNo < 1 || classNo > max) {
+    throw badRequest('BAD_CLASS', `${GRADE_LABELS[grade]}的班级要在 1 到 ${max} 之间`);
+  }
+  const requesterName = (input.requesterName ?? '').trim();
+  if (requesterName.length < 2 || requesterName.length > 12) {
+    throw badRequest('BAD_NAME', '姓名填 2 到 12 个字');
+  }
+  return { grade, classNo, requesterName };
+}
+
+export function assertDailyLimits(ipUsed: number, identityUsed: number | null): void {
+  if (ipUsed >= IP_DAILY_LIMIT) {
+    throw tooMany('RATE_LIMIT_IP', `这台设备今天已经点了 ${IP_DAILY_LIMIT} 次，明天再来`, {
+      limit: IP_DAILY_LIMIT,
+      window: 'day',
+    });
+  }
+  if (identityUsed !== null && identityUsed >= IDENTITY_DAILY_LIMIT) {
+    throw tooMany('RATE_LIMIT_IDENTITY', `每人每天最多点 ${IDENTITY_DAILY_LIMIT} 首，明天再来`, {
+      limit: IDENTITY_DAILY_LIMIT,
+      window: 'day',
+    });
+  }
+}
+
+export async function submitRequest(input: any, ip: string): Promise<{ queryCode: string }> {
+  const site = await readSite();
+  if (!site.requestsOpen) throw badRequest('REQUESTS_CLOSED', '点歌通道现在关着，等台里再开');
+
+  const source = getSource(input.source);
+  if (!source) throw badRequest('BAD_SOURCE', '音源不对');
+  if (!input.platformId?.trim()) throw badRequest('BAD_SONG', '没选歌');
+
+  const identity = normalizeIdentity(input, site.requireIdentity, site.classCounts);
+
+  // Prefer server-verified metadata; fall back to client data for sources without detail API (e.g. kugou)
+  let song = await source.detail(input.platformId.trim());
+  if (!song) {
+    // Accept client-provided metadata as fallback
+    if (!input.title?.trim()) throw notFound('SONG_NOT_FOUND', '这首歌查不到了，换一首试试');
+    song = {
+      source: input.source,
+      platformId: input.platformId.trim(),
+      title: input.title.trim(),
+      artist: input.artist?.trim() || '未知歌手',
+      album: input.album?.trim() || undefined,
+      durationMs: Number(input.durationMs) || 0,
+      coverUrl: input.coverUrl || undefined,
+      vip: false,
+    };
+  }
+
+  const since = Math.floor(shanghaiDayStart().getTime() / 1000);
+
+  const ipCountResult = await db
+    .select({ count: count() })
+    .from(songRequest)
+    .where(and(eq(songRequest.submitIp, ip), gte(songRequest.createdAt, since)));
+  const ipUsed = (ipCountResult[0] as any)?.count ?? 0;
+
+  let identityUsed: number | null = null;
+  if (identity) {
+    const identityCountResult = await db
+      .select({ count: count() })
+      .from(songRequest)
+      .where(
+        and(
+          eq(songRequest.grade, identity.grade),
+          eq(songRequest.classNo, identity.classNo),
+          eq(songRequest.requesterName, identity.requesterName),
+          gte(songRequest.createdAt, since)
+        )
+      );
+    identityUsed = (identityCountResult[0] as any)?.count ?? 0;
+  }
+  assertDailyLimits(ipUsed, identityUsed);
+
+  const flagged = await findBannedHits(song.title, song.artist);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      const qc = newQueryCode();
+      await db.insert(songRequest).values({
+        id: `req_${crypto.randomUUID().substring(2, 11)}`,
+        queryCode: qc,
+        source: song.source,
+        platformId: song.platformId,
+        title: song.title,
+        artist: song.artist,
+        album: song.album ?? null,
+        durationMs: song.durationMs,
+        coverUrl: song.coverUrl ?? null,
+        grade: identity?.grade ?? null,
+        classNo: identity?.classNo ?? null,
+        requesterName: identity?.requesterName ?? null,
+        flaggedWords: encodeWordList(flagged),
+        submitIp: ip,
+      });
+      return { queryCode: qc };
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+    }
+  }
+  throw badRequest('CODE_COLLISION', '查询码生成失败，再点一次试试');
+}
+
+export interface LookupView {
+  queryCode: string;
+  status: RequestStatus;
+  statusLabel: string;
+  source: SourceId;
+  title: string;
+  artist: string;
+  coverUrl: string | null;
+  durationMs: number;
+  createdAt: string;
+  rejectReason: string | null;
+  schedule: { playDate: string; slotName: string; orderNo: number } | null;
+}
+
+export async function lookupByCode(code: string): Promise<LookupView> {
+  if (!isValid6DigitCode(code)) throw badRequest('BAD_CODE', '查询码是 6 位字母数字');
+
+  const rows = await db
+    .select({
+      id: songRequest.id,
+      queryCode: songRequest.queryCode,
+      status: songRequest.status,
+      source: songRequest.source,
+      title: songRequest.title,
+      artist: songRequest.artist,
+      coverUrl: songRequest.coverUrl,
+      durationMs: songRequest.durationMs,
+      createdAt: songRequest.createdAt,
+      rejectReason: songRequest.rejectReason,
+      schedulePlayDate: schedule.playDate,
+      scheduleOrderNo: schedule.orderNo,
+      slotName: broadcastSlot.name,
+    })
+    .from(songRequest)
+    .leftJoin(schedule, eq(songRequest.id, schedule.requestId))
+    .leftJoin(broadcastSlot, eq(schedule.slotId, broadcastSlot.id))
+    .where(eq(songRequest.queryCode, code))
+    .limit(1);
+
+  if (rows.length === 0) throw notFound('CODE_NOT_FOUND', '没找到这个查询码，看看是不是输错了');
+  const row = rows[0] as any;
+
+  const status = isRequestStatus(row.status) ? (row.status as RequestStatus) : 'PENDING';
+  return {
+    queryCode: row.queryCode,
+    status,
+    statusLabel: status,
+    source: row.source,
+    title: row.title,
+    artist: row.artist,
+    coverUrl: row.coverUrl,
+    durationMs: row.durationMs,
+    createdAt: new Date(Number(row.createdAt) * 1000).toISOString(),
+    rejectReason: row.rejectReason,
+    schedule: row.schedulePlayDate
+      ? {
+          playDate: row.schedulePlayDate,
+          slotName: row.slotName,
+          orderNo: row.scheduleOrderNo,
+        }
+      : null,
+  };
+}
