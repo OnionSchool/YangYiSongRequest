@@ -9,7 +9,7 @@ export default defineEventHandler(async (event) => {
   }
 
   const { role } = await readBody<{ role?: string }>(event);
-  if (role !== 'SUPER' && role !== 'REVIEWER') {
+  if (role !== 'SUPER' && role !== 'PLANNER' && role !== 'TECHNICIAN') {
     throw createError({
       statusCode: 400,
       statusMessage: 'Bad Request',
@@ -23,5 +23,11 @@ export default defineEventHandler(async (event) => {
     secure: process.env.NODE_ENV === 'production',
   });
 
-  return { username: 'debug', role, mustChangePassword: false, debugMode: true };
+  return {
+    username: 'debug',
+    role,
+    mustChangePassword: false,
+    csrfToken: 'debug',
+    debugMode: true,
+  };
 });

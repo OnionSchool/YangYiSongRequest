@@ -14,7 +14,7 @@ const msg = ref<string | null>(null);
 const showNew = ref(false);
 const newUsername = ref('');
 const newPassword = ref('');
-const newRole = ref<'SUPER' | 'REVIEWER'>('REVIEWER');
+const newRole = ref<'SUPER' | 'PLANNER' | 'TECHNICIAN'>('PLANNER');
 const creating = ref(false);
 
 async function load() {
@@ -154,7 +154,8 @@ onMounted(load);
             v-model="newRole"
             class="rounded-lg border border-rule bg-paper px-3 py-2 text-sm focus:border-ink-faint focus:outline-none"
           >
-            <option value="REVIEWER">审核员</option>
+            <option value="PLANNER">策划</option>
+            <option value="TECHNICIAN">技术员</option>
             <option value="SUPER">超级管理员</option>
           </select>
           <button
@@ -202,7 +203,7 @@ onMounted(load);
                   : 'bg-blue-50 text-blue-700 border border-blue-200'
               "
             >
-              {{ user.role === 'SUPER' ? '超管' : '审核员' }}
+              {{ user.role === 'SUPER' ? '超管' : user.role === 'PLANNER' ? '策划' : '技术员' }}
             </span>
             <span
               v-if="user.disabled"

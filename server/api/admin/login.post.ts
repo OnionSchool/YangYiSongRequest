@@ -1,4 +1,11 @@
-import { createError, defineEventHandler, readBody, setHeader, setCookie } from 'h3';
+import {
+  createError,
+  defineEventHandler,
+  getRequestHeader,
+  readBody,
+  setHeader,
+  setCookie,
+} from 'h3';
 import { login } from '../../utils/auth';
 import { writeAudit } from '../../utils/audit';
 import { readSite } from '../../utils/site';
@@ -16,7 +23,11 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const { token, session } = await login(username, password);
+  const ip =
+    getRequestHeader(event, 'x-forwarded-for')?.split(',')[0]?.trim() ??
+    event.node.req.socket.remoteAddress ??
+    'unknown';
+  const { token, session } = await login(username, password, ip);
 
   setCookie(event, 'admin_token', token, {
     maxAge: 7 * 24 * 60 * 60, // 7 days
@@ -34,5 +45,6 @@ export default defineEventHandler(async (event) => {
     username: session.username,
     role: session.role,
     mustChangePassword: site.forceChangePassword && session.mustChangePassword,
+    csrfToken: session.csrfToken,
   };
 });

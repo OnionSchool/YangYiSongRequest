@@ -7,7 +7,7 @@ import * as schema from './schema.ts';
 const DB_PATH = path.join(process.cwd(), 'data', 'server.sqlite');
 
 mkdirSync(path.dirname(DB_PATH), { recursive: true });
-const sqlite = new Database(DB_PATH);
+export const sqlite = new Database(DB_PATH);
 
 export const db = drizzle(sqlite, { schema });
 

@@ -3,11 +3,19 @@ import type { H3Event } from 'h3';
 import { verifyToken } from './auth';
 import type { AdminSession } from './auth';
 
-export const isDebugMode = () => process.env.DEBUG_MODE === 'true';
+export const isDebugMode = () =>
+  process.env.NODE_ENV !== 'production' && process.env.DEBUG_MODE === 'true';
 
 export function getDebugSession(event: H3Event): AdminSession {
-  const role = getCookie(event, 'debug_admin_role') === 'REVIEWER' ? 'REVIEWER' : 'SUPER';
-  return { userId: 'debug', username: 'debug', role, mustChangePassword: false };
+  const candidate = getCookie(event, 'debug_admin_role');
+  const role = candidate === 'PLANNER' || candidate === 'TECHNICIAN' ? candidate : 'SUPER';
+  return {
+    userId: 'debug',
+    username: 'debug',
+    role,
+    mustChangePassword: false,
+    csrfToken: 'debug',
+  };
 }
 
 /**
@@ -43,6 +51,14 @@ export function requireSuper(event: H3Event): AdminSession {
       statusMessage: 'Forbidden',
       message: '需要超级管理员权限',
     });
+  }
+  return session;
+}
+
+export function requirePlanner(event: H3Event): AdminSession {
+  const session = requireAuth(event);
+  if (session.role !== 'SUPER' && session.role !== 'PLANNER') {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: '需要策划权限' });
   }
   return session;
 }

@@ -111,6 +111,12 @@ export class ApiError extends Error {
   }
 }
 
+let csrfToken: string | null = null;
+
+export function setCsrfToken(token: string | null): void {
+  csrfToken = token;
+}
+
 /** 管理端的请求也复用这套错误处理，见 lib/adminApi.ts */
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
@@ -120,6 +126,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       headers: {
         accept: 'application/json',
         ...(init?.body ? { 'content-type': 'application/json' } : {}),
+        ...(csrfToken && init?.method && !['GET', 'HEAD'].includes(init.method)
+          ? { 'x-csrf-token': csrfToken }
+          : {}),
         ...init?.headers,
       },
     });
@@ -145,6 +154,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       response.status
     );
   }
+  const token = (data as { csrfToken?: unknown } | null)?.csrfToken;
+  if (typeof token === 'string') setCsrfToken(token);
   return data as T;
 }
 

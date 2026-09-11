@@ -2,12 +2,13 @@
 import { apiFetch } from './api';
 import type { RequestStatus, SourceId } from './api';
 
-export type AdminRole = 'SUPER' | 'REVIEWER';
+export type AdminRole = 'SUPER' | 'PLANNER' | 'TECHNICIAN';
 
 export interface AdminMe {
   username: string;
   role: AdminRole;
   mustChangePassword: boolean;
+  csrfToken: string;
 }
 
 export interface AdminRequest {

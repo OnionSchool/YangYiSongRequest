@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { apiFetch } from '~/lib/api';
+import { apiFetch, setCsrfToken } from '~/lib/api';
 
 export interface AdminUser {
   username: string;
-  role: 'SUPER' | 'REVIEWER';
+  role: 'SUPER' | 'PLANNER' | 'TECHNICIAN';
   mustChangePassword: boolean;
+  csrfToken: string;
   debugMode?: boolean;
 }
 
@@ -20,18 +21,21 @@ export const useAdmin = defineStore('admin', () => {
       body: JSON.stringify({ username, password }),
     });
     me.value = user;
+    setCsrfToken(user.csrfToken);
     return user;
   }
 
   async function logout() {
     await apiFetch<{ ok: true }>('/api/admin/logout', { method: 'POST' });
     me.value = null;
+    setCsrfToken(null);
   }
 
   async function checkSession() {
     try {
       const user = await apiFetch<AdminUser | null>('/api/admin/me');
       me.value = user;
+      setCsrfToken(user?.csrfToken ?? null);
     } catch {
       me.value = null;
     }

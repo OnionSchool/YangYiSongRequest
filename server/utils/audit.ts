@@ -5,6 +5,9 @@ import { encodeDetail } from './domain';
 
 export type AuditAction =
   | 'login'
+  | 'logout'
+  | 'login.failed'
+  | 'permission.denied'
   | 'password.change'
   | 'request.schedule'
   | 'request.reject'

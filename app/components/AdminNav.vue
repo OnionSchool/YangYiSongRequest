@@ -65,7 +65,7 @@ async function signOut() {
   await router.push('/admin/login');
 }
 
-async function switchDebugRole(role: 'SUPER' | 'REVIEWER') {
+async function switchDebugRole(role: 'SUPER' | 'PLANNER' | 'TECHNICIAN') {
   if (admin.me?.role === role) return;
   switchingRole.value = true;
   try {
@@ -117,7 +117,9 @@ async function switchDebugRole(role: 'SUPER' | 'REVIEWER') {
         </div>
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium">{{ admin.me?.username }}</p>
-          <p class="text-[11px] text-ink-faint">{{ admin.isSuper ? '超级管理员' : '审核员' }}</p>
+          <p class="text-[11px] text-ink-faint">
+            {{ admin.isSuper ? '超级管理员' : admin.me?.role === 'PLANNER' ? '策划' : '技术员' }}
+          </p>
         </div>
         <button
           class="rounded p-1 text-ink-faint hover:text-ink hover:bg-paper-deep/40 transition-colors"
@@ -166,9 +168,9 @@ async function switchDebugRole(role: 'SUPER' | 'REVIEWER') {
                 : 'text-ink-faint hover:text-ink'
             "
             :disabled="switchingRole"
-            @click="switchDebugRole('REVIEWER')"
+            @click="switchDebugRole('PLANNER')"
           >
-            审核员
+            策划
           </button>
         </div>
       </div>
@@ -273,7 +275,13 @@ async function switchDebugRole(role: 'SUPER' | 'REVIEWER') {
                   <div class="min-w-0 flex-1">
                     <p class="text-sm font-medium">{{ admin.me?.username }}</p>
                     <p class="text-[11px] text-ink-faint">
-                      {{ admin.isSuper ? '超级管理员' : '审核员' }}
+                      {{
+                        admin.isSuper
+                          ? '超级管理员'
+                          : admin.me?.role === 'PLANNER'
+                            ? '策划'
+                            : '技术员'
+                      }}
                     </p>
                   </div>
                   <button
@@ -303,9 +311,9 @@ async function switchDebugRole(role: 'SUPER' | 'REVIEWER') {
                       !admin.isSuper ? 'bg-paper text-orange-deep shadow-sm' : 'text-ink-faint'
                     "
                     :disabled="switchingRole"
-                    @click="switchDebugRole('REVIEWER')"
+                    @click="switchDebugRole('PLANNER')"
                   >
-                    审核员
+                    策划
                   </button>
                 </div>
               </div>

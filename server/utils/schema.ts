@@ -39,13 +39,33 @@ export const adminUser = table('AdminUser', {
   id: text('id').primaryKey(),
   username: text('username').notNull().unique(),
   passwordHash: text('passwordHash').notNull(),
-  role: text('role').notNull().default('REVIEWER'),
+  role: text('role').notNull().default('PLANNER'),
   mustChangePassword: integer('mustChangePassword').notNull().default(0),
   disabled: integer('disabled').notNull().default(0),
   lastLoginAt: integer('lastLoginAt'),
+  sessionVersion: integer('sessionVersion').notNull().default(0),
   createdAt: integer('createdAt')
     .notNull()
     .default(sql`unixepoch()`),
+});
+
+export const adminSession = table('AdminSession', {
+  id: text('id').primaryKey(),
+  tokenHash: text('tokenHash').notNull().unique(),
+  csrfToken: text('csrfToken').notNull(),
+  userId: text('userId').notNull(),
+  sessionVersion: integer('sessionVersion').notNull(),
+  createdAt: integer('createdAt').notNull(),
+  lastSeenAt: integer('lastSeenAt').notNull(),
+  expiresAt: integer('expiresAt').notNull(),
+  revokedAt: integer('revokedAt'),
+});
+
+export const loginAttempt = table('LoginAttempt', {
+  id: text('id').primaryKey(),
+  username: text('username').notNull(),
+  ip: text('ip').notNull(),
+  failedAt: integer('failedAt').notNull(),
 });
 
 export const auditLog = table('AuditLog', {

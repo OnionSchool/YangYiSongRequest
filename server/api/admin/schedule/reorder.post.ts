@@ -1,13 +1,13 @@
 import { defineEventHandler, readBody, setHeader } from 'h3';
 import { and, eq } from 'drizzle-orm';
-import { requireAuth } from '../../../utils/admin-auth';
+import { requirePlanner } from '../../../utils/admin-auth';
 import { db } from '../../../utils/db';
 import { schedule } from '../../../utils/schema';
 import { writeAudit } from '../../../utils/audit';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
-  const session = requireAuth(event);
+  const session = requirePlanner(event);
   const { playDate, slotId, orderedIds } = await readBody(event);
 
   for (let i = 0; i < orderedIds.length; i++) {

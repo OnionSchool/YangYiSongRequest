@@ -29,11 +29,12 @@ export const DAY_KIND_LABELS: Record<DayKind, string> = {
   EXAM_NO_BROADCAST: '考试不播',
 };
 
-export const ADMIN_ROLES = ['SUPER', 'REVIEWER'] as const;
+export const ADMIN_ROLES = ['SUPER', 'PLANNER', 'TECHNICIAN'] as const;
 export type AdminRole = (typeof ADMIN_ROLES)[number];
 export const ROLE_LABELS: Record<AdminRole, string> = {
   SUPER: '超级管理员',
-  REVIEWER: '审核员',
+  PLANNER: '策划',
+  TECHNICIAN: '技术员',
 };
 
 const membership =
