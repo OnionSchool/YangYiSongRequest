@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { isPlaybackStatus } from '../../../../utils/domain';
 import { requireScheduledRequest } from '../../../../utils/schedule';
 import { writeAudit } from '../../../../utils/audit';
+import { getRequestAudio } from '../../../../utils/audio-cache';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -25,6 +26,9 @@ export default defineEventHandler(async (event) => {
     (session.role === 'SUPER' && body.status !== current);
   if (!allowed || (session.role !== 'TECHNICIAN' && session.role !== 'SUPER')) {
     throw createError({ statusCode: 403, message: '不允许此播放状态变更' });
+  }
+  if (body.status === 'DOWNLOADED' && current === 'PENDING_DOWNLOAD') {
+    await getRequestAudio(id);
   }
   const finalizedAt = body.status === 'PLAYED' ? Math.floor(Date.now() / 1000) : null;
   await db

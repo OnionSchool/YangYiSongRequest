@@ -41,6 +41,7 @@ const navGroups = computed(() => [
             { to: '/admin/config', icon: '⚙️', label: '站点设置' },
             { to: '/admin/calendar', icon: '🗓️', label: '行政历' },
             { to: '/admin/sources', icon: '🎵', label: '音源状态' },
+            { to: '/admin/alerts', icon: '⚠️', label: '系统告警' },
             { to: '/admin/users', icon: '👥', label: '账号管理' },
           ],
         },

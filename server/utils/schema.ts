@@ -140,3 +140,27 @@ export const schedule = table('Schedule', {
     .notNull()
     .default(sql`unixepoch()`),
 });
+
+export const audioCacheObject = table('AudioCacheObject', {
+  requestId: text('requestId').primaryKey(),
+  filePath: text('filePath').notNull(),
+  mimeType: text('mimeType').notNull(),
+  sizeBytes: integer('sizeBytes').notNull(),
+  createdAt: integer('createdAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+  lastAccessAt: integer('lastAccessAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+});
+
+export const systemAlert = table('SystemAlert', {
+  id: text('id').primaryKey(),
+  level: text('level').notNull(),
+  message: text('message').notNull(),
+  detail: text('detail'),
+  createdAt: integer('createdAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+  resolvedAt: integer('resolvedAt'),
+});

@@ -4,6 +4,8 @@ import {
   readDay,
   unscheduleRequest,
   updatePlaybackStatus,
+  songDownloadUrl,
+  dayZipUrl,
   type AdminDaySlot,
 } from '~/lib/adminApi';
 import { useAdmin } from '~/stores/admin';
@@ -123,6 +125,12 @@ onMounted(load);
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </button>
+      <a
+        v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
+        :href="dayZipUrl(selectedDate)"
+        class="ml-auto rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint"
+        >下载当天 ZIP</a
+      >
       <div class="paper-card flex items-center gap-3 px-4 py-2">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -245,6 +253,12 @@ onMounted(load);
             <span class="rounded bg-paper-deep/40 px-2 py-1 text-xs">{{
               playbackLabels[song.playbackStatus]
             }}</span>
+            <a
+              v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
+              :href="songDownloadUrl(song.id)"
+              class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
+              >下载</a
+            >
             <button
               v-if="
                 (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
