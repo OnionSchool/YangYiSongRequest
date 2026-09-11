@@ -1,10 +1,10 @@
 import { defineEventHandler, getRequestURL, setHeader } from 'h3';
-import { requireAuth } from '../../utils/admin-auth';
+import { requirePlanner } from '../../utils/admin-auth';
 import { listAdminRequests } from '../../utils/admin-requests';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
-  requireAuth(event);
+  requirePlanner(event);
 
   const url = getRequestURL(event);
   return listAdminRequests({

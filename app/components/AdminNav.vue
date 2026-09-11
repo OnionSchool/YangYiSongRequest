@@ -23,8 +23,14 @@ const navGroups = computed(() => [
     label: '工作台',
     items: [
       { to: '/admin', icon: '📊', label: '仪表盘', exact: true },
-      { to: '/admin/review', icon: '📋', label: '审核管理' },
-      { to: '/admin/schedule', icon: '📅', label: '排期管理' },
+      ...(admin.me?.role === 'TECHNICIAN'
+        ? []
+        : [{ to: '/admin/review', icon: '📋', label: '审核管理' }]),
+      {
+        to: '/admin/schedule',
+        icon: '📅',
+        label: admin.me?.role === 'TECHNICIAN' ? '播放工作台' : '排期管理',
+      },
     ],
   },
   ...(admin.isSuper
@@ -47,18 +53,18 @@ const navGroups = computed(() => [
 ]);
 
 // 移动端底栏 + "更多"
-const mobileMainTabs = [
+const mobileMainTabs = computed(() => [
   { to: '/admin', icon: '📊', label: '首页', exact: true },
-  { to: '/admin/review', icon: '📋', label: '审核' },
+  ...(admin.me?.role === 'TECHNICIAN' ? [] : [{ to: '/admin/review', icon: '📋', label: '审核' }]),
   { to: '/admin/schedule', icon: '📅', label: '排期' },
-];
+]);
 
 function isActive(to: string, exact?: boolean) {
   return exact ? route.path === to : route.path.startsWith(to);
 }
 
 // "更多"按钮高亮：当前路由不在三个主 tab 里时
-const moreActive = computed(() => !mobileMainTabs.some((t) => isActive(t.to, t.exact)));
+const moreActive = computed(() => !mobileMainTabs.value.some((t) => isActive(t.to, t.exact)));
 
 async function signOut() {
   await admin.logout();

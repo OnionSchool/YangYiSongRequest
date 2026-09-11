@@ -36,8 +36,20 @@ export interface AdminDaySlot {
   startTime: string;
   endTime: string;
   maxCount: number | null;
+  maxMs: number | null;
   totalMs: number;
-  songs: AdminRequest[];
+  songs: AdminScheduleSong[];
+}
+
+export interface AdminScheduleSong {
+  id: string;
+  title: string;
+  artist: string;
+  durationMs: number;
+  playbackStatus: 'PENDING_DOWNLOAD' | 'DOWNLOADED' | 'PLAYED' | 'PLAYBACK_ERROR';
+  orderNo: number;
+  playTime: string;
+  requester?: string | null;
 }
 
 export interface AuditEntry {
@@ -75,19 +87,25 @@ export const listRequests = (params: { status?: string; date?: string; page?: nu
   );
 };
 
-export const readDay = (date: string) => apiFetch<AdminDaySlot[]>(`/api/admin/schedule/${date}`);
+export const readDay = (date: string) =>
+  apiFetch<{ version: number; slots: AdminDaySlot[] }>(`/api/admin/schedule/${date}`);
 
-export const scheduleRequest = (id: string, playDate: string, slotId: string) =>
-  post<{ orderNo: number; capacity: { over: boolean; message: string | null } }>(
+export const scheduleRequest = (
+  id: string,
+  playDate: string,
+  slotId: string,
+  expectedVersion?: number
+) =>
+  post<{ orderNo: number; version: number; durationIncomplete: boolean }>(
     `/api/admin/requests/${id}/schedule`,
-    { playDate, slotId }
+    { playDate, slotId, expectedVersion }
   );
 
 export const rejectRequest = (id: string, reason: string) =>
   post<{ ok: true }>(`/api/admin/requests/${id}/reject`, { reason });
 
-export const unscheduleRequest = (id: string) =>
-  post<{ ok: true }>(`/api/admin/requests/${id}/unschedule`);
+export const unscheduleRequest = (id: string, expectedVersion?: number) =>
+  post<{ ok: true; version: number }>(`/api/admin/requests/${id}/unschedule`, { expectedVersion });
 
 export const batchRequests = (body: {
   ids: string[];
@@ -101,8 +119,24 @@ export const batchRequests = (body: {
     body
   );
 
-export const reorderSlot = (playDate: string, slotId: string, orderedIds: string[]) =>
-  post<{ ok: true }>('/api/admin/schedule/reorder', { playDate, slotId, orderedIds });
+export const reorderSlot = (
+  playDate: string,
+  slotId: string,
+  orderedIds: string[],
+  expectedVersion?: number
+) =>
+  post<{ ok: true; version: number }>('/api/admin/schedule/reorder', {
+    playDate,
+    slotId,
+    orderedIds,
+    expectedVersion,
+  });
+
+export const updatePlaybackStatus = (id: string, status: AdminScheduleSong['playbackStatus']) =>
+  apiFetch<{ ok: true; status: AdminScheduleSong['playbackStatus'] }>(
+    `/api/admin/requests/${id}/playback`,
+    { method: 'PUT', body: JSON.stringify({ status }) }
+  );
 
 export const manualAdd = (body: {
   source: SourceId;
@@ -197,6 +231,21 @@ export const readCalendar = (month: string) =>
 export const saveCalendar = (
   days: Array<{ date: string; kind: CalendarRow['kind'] | null; note?: string }>
 ) => put<{ ok: true }>('/api/admin/config/calendar', { days });
+
+export interface ScheduleRule {
+  weekday?: number;
+  date?: string;
+  slotIds: string[];
+}
+export interface ScheduleRulesResponse {
+  weekly: Array<{ weekday: number; slotId: string; sortOrder: number }>;
+  overrides: Array<{ date: string; slotId: string; sortOrder: number }>;
+  overrideDays: Array<{ date: string }>;
+}
+export const readScheduleRules = () =>
+  apiFetch<ScheduleRulesResponse>('/api/admin/config/schedule-rules');
+export const saveScheduleRules = (weekly: ScheduleRule[], overrides: ScheduleRule[]) =>
+  put<{ ok: true }>('/api/admin/config/schedule-rules', { weekly, overrides });
 
 export const readCredentials = () =>
   apiFetch<{ keyConfigured: boolean; items: CredentialRow[] }>('/api/admin/sources');

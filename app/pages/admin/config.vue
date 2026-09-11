@@ -9,7 +9,10 @@ import {
   saveGrades,
   readWords,
   saveWords,
+  readScheduleRules,
+  saveScheduleRules,
   type SlotRow,
+  type ScheduleRule,
 } from '~/lib/adminApi';
 
 definePageMeta({ layout: 'admin' });
@@ -28,6 +31,12 @@ const siteMsg = ref<string | null>(null);
 const slots = ref<SlotRow[]>([]);
 const slotsMsg = ref<string | null>(null);
 
+const weeklyRules = ref<ScheduleRule[]>(
+  Array.from({ length: 7 }, (_, weekday) => ({ weekday, slotIds: [] }))
+);
+const overrideRules = ref<ScheduleRule[]>([]);
+const rulesMsg = ref<string | null>(null);
+
 // Grades
 const gradeG1 = ref(23);
 const gradeG2 = ref(23);
@@ -44,6 +53,7 @@ const error = ref<string | null>(null);
 const tabs = [
   { key: 'site', icon: '⚙️', label: '基本设置' },
   { key: 'slots', icon: '🎙️', label: '播出时段' },
+  { key: 'schedule', icon: '🗓️', label: '播出规则' },
   { key: 'grades', icon: '🎓', label: '年级班级' },
   { key: 'words', icon: '🚫', label: '屏蔽词' },
 ];
@@ -51,11 +61,12 @@ const tabs = [
 async function loadAll() {
   loading.value = true;
   try {
-    const [site, sl, gr, w] = await Promise.all([
+    const [site, sl, gr, w, rules] = await Promise.all([
       readSiteConfig(),
       readSlots(),
       readGrades(),
       readWords(),
+      readScheduleRules(),
     ]);
     if (site) {
       requestsOpen.value = site.requestsOpen;
@@ -65,6 +76,20 @@ async function loadAll() {
       maxScheduleDays.value = site.maxScheduleDays;
     }
     slots.value = sl;
+    weeklyRules.value = Array.from({ length: 7 }, (_, weekday) => ({
+      weekday,
+      slotIds: rules.weekly
+        .filter((rule) => rule.weekday === weekday)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((rule) => rule.slotId),
+    }));
+    overrideRules.value = rules.overrideDays.map(({ date }) => ({
+      date,
+      slotIds: rules.overrides
+        .filter((rule) => rule.date === date)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((rule) => rule.slotId),
+    }));
     for (const g of gr) {
       if (g.grade === 'G1') gradeG1.value = g.classCount;
       if (g.grade === 'G2') gradeG2.value = g.classCount;
@@ -122,6 +147,20 @@ async function doSaveSlots() {
     }, 2000);
   } catch (e: any) {
     slotsMsg.value = e.message ?? '保存失败';
+  }
+}
+
+function addOverride() {
+  overrideRules.value.push({ date: '', slotIds: [] });
+}
+
+async function doSaveScheduleRules() {
+  rulesMsg.value = null;
+  try {
+    await saveScheduleRules(weeklyRules.value, overrideRules.value);
+    rulesMsg.value = '✓ 已保存';
+  } catch (e: any) {
+    rulesMsg.value = e.message ?? '保存失败';
   }
 }
 
@@ -356,6 +395,65 @@ onMounted(loadAll);
           >
             <span v-if="slotsMsg" class="text-sm text-green-600 font-medium">{{ slotsMsg }}</span>
           </Transition>
+        </div>
+      </div>
+
+      <div v-if="activeTab === 'schedule'" class="paper-card p-6 space-y-6">
+        <p class="text-sm text-ink-faint">日期例外会完整覆盖对应星期的时段，可留空以设置停播日。</p>
+        <div class="space-y-3">
+          <div
+            v-for="rule in weeklyRules"
+            :key="rule.weekday"
+            class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-rule pb-3 last:border-0"
+          >
+            <span class="w-12 font-medium text-sm">{{
+              ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][rule.weekday!]
+            }}</span>
+            <label v-for="slot in slots" :key="slot.id" class="flex items-center gap-1.5 text-sm">
+              <input
+                v-model="rule.slotIds"
+                type="checkbox"
+                :value="slot.id"
+                :disabled="!slot.enabled"
+              />
+              {{ slot.name }}
+            </label>
+          </div>
+        </div>
+        <div class="border-t border-rule pt-5 space-y-3">
+          <div class="flex items-center justify-between">
+            <p class="font-medium">指定日期例外</p>
+            <button class="btn-secondary px-3 py-1.5 text-sm" @click="addOverride">添加日期</button>
+          </div>
+          <div
+            v-for="(rule, index) in overrideRules"
+            :key="index"
+            class="flex flex-wrap items-center gap-x-4 gap-y-2"
+          >
+            <input
+              v-model="rule.date"
+              type="date"
+              class="rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm"
+            />
+            <label v-for="slot in slots" :key="slot.id" class="flex items-center gap-1.5 text-sm">
+              <input
+                v-model="rule.slotIds"
+                type="checkbox"
+                :value="slot.id"
+                :disabled="!slot.enabled"
+              />
+              {{ slot.name }}
+            </label>
+            <button class="text-sm text-red-600" @click="overrideRules.splice(index, 1)">
+              删除
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="btn-primary px-5 py-2.5 text-sm" @click="doSaveScheduleRules">
+            保存播出规则
+          </button>
+          <span v-if="rulesMsg" class="text-sm text-green-600 font-medium">{{ rulesMsg }}</span>
         </div>
       </div>
 

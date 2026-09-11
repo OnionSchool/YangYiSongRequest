@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { readDay, unscheduleRequest, type AdminDaySlot } from '~/lib/adminApi';
+import {
+  readDay,
+  unscheduleRequest,
+  updatePlaybackStatus,
+  type AdminDaySlot,
+} from '~/lib/adminApi';
+import { useAdmin } from '~/stores/admin';
 import { isoDate, shiftDate } from '~/lib/time';
 
 definePageMeta({ layout: 'admin' });
@@ -8,15 +14,19 @@ definePageMeta({ layout: 'admin' });
 const today = isoDate(new Date());
 const selectedDate = ref(today);
 const slots = ref<AdminDaySlot[]>([]);
+const version = ref(0);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const unschedulingId = ref<string | null>(null);
+const admin = useAdmin();
 
 async function load() {
   loading.value = true;
   error.value = null;
   try {
-    slots.value = await readDay(selectedDate.value);
+    const day = await readDay(selectedDate.value);
+    slots.value = day.slots;
+    version.value = day.version;
   } catch (e: any) {
     error.value = e.message ?? '加载失败';
   } finally {
@@ -28,7 +38,8 @@ async function doUnschedule(requestId: string) {
   if (!confirm('确定取消排期？')) return;
   unschedulingId.value = requestId;
   try {
-    await unscheduleRequest(requestId);
+    const result = await unscheduleRequest(requestId, version.value);
+    version.value = result.version;
     await load();
   } catch (e: any) {
     error.value = e.message ?? '操作失败';
@@ -36,6 +47,22 @@ async function doUnschedule(requestId: string) {
     unschedulingId.value = null;
   }
 }
+
+async function setPlaybackStatus(id: string, status: 'DOWNLOADED' | 'PLAYED' | 'PLAYBACK_ERROR') {
+  try {
+    await updatePlaybackStatus(id, status);
+    await load();
+  } catch (e: any) {
+    error.value = e.message ?? '操作失败';
+  }
+}
+
+const playbackLabels = {
+  PENDING_DOWNLOAD: '待下载',
+  DOWNLOADED: '已下载',
+  PLAYED: '已播放',
+  PLAYBACK_ERROR: '播放异常',
+};
 
 function prevDay() {
   selectedDate.value = shiftDate(selectedDate.value, -1);
@@ -209,25 +236,47 @@ onMounted(load);
             class="flex items-center gap-3 px-5 py-3 hover:bg-paper-deep/10 transition-colors"
           >
             <span class="w-6 text-center text-sm font-mono text-ink-faint">{{ index + 1 }}</span>
-            <img
-              v-if="song.coverUrl"
-              :src="song.coverUrl"
-              class="h-10 w-10 rounded-lg object-cover shadow-sm"
-              loading="lazy"
-            />
-            <div
-              v-else
-              class="flex h-10 w-10 items-center justify-center rounded-lg bg-paper-deep/30 text-sm"
-            >
-              🎵
-            </div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium">{{ song.title }}</p>
               <p class="truncate text-xs text-ink-faint">
-                {{ song.artist }} · {{ formatDuration(song.durationMs) }}
+                {{ song.playTime }} · {{ song.artist }} · {{ formatDuration(song.durationMs) }}
               </p>
             </div>
+            <span class="rounded bg-paper-deep/40 px-2 py-1 text-xs">{{
+              playbackLabels[song.playbackStatus]
+            }}</span>
             <button
+              v-if="
+                (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
+                song.playbackStatus === 'PENDING_DOWNLOAD'
+              "
+              class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
+              @click="setPlaybackStatus(song.id, 'DOWNLOADED')"
+            >
+              标为已下载
+            </button>
+            <button
+              v-if="
+                (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
+                song.playbackStatus !== 'PLAYED'
+              "
+              class="shrink-0 rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600"
+              @click="setPlaybackStatus(song.id, 'PLAYBACK_ERROR')"
+            >
+              异常
+            </button>
+            <button
+              v-if="
+                (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
+                song.playbackStatus === 'DOWNLOADED'
+              "
+              class="shrink-0 rounded-lg border border-green-200 px-2.5 py-1 text-xs text-green-700"
+              @click="setPlaybackStatus(song.id, 'PLAYED')"
+            >
+              标为已播放
+            </button>
+            <button
+              v-if="admin.me?.role === 'PLANNER' || admin.isSuper"
               class="shrink-0 rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
               :disabled="unschedulingId === song.id"
               @click="doUnschedule(song.id)"

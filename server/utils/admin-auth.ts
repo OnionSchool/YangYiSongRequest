@@ -62,3 +62,11 @@ export function requirePlanner(event: H3Event): AdminSession {
   }
   return session;
 }
+
+export function requireTechnician(event: H3Event): AdminSession {
+  const session = requireAuth(event);
+  if (session.role !== 'SUPER' && session.role !== 'TECHNICIAN') {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: '需要技术员权限' });
+  }
+  return session;
+}

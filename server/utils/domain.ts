@@ -12,13 +12,27 @@ export const GRADES = ['G1', 'G2', 'G3'] as const;
 export type Grade = (typeof GRADES)[number];
 export const GRADE_LABELS: Record<Grade, string> = { G1: '高一', G2: '高二', G3: '高三' };
 
-export const REQUEST_STATUSES = ['PENDING', 'SCHEDULED', 'PLAYED', 'REJECTED'] as const;
+export const REQUEST_STATUSES = ['PENDING', 'SCHEDULED', 'REJECTED', 'CANCELLED'] as const;
 export type RequestStatus = (typeof REQUEST_STATUSES)[number];
 export const STATUS_LABELS: Record<RequestStatus, string> = {
   PENDING: '待审核',
   SCHEDULED: '已排期',
-  PLAYED: '已播出',
   REJECTED: '已驳回',
+  CANCELLED: '已取消',
+};
+
+export const PLAYBACK_STATUSES = [
+  'PENDING_DOWNLOAD',
+  'DOWNLOADED',
+  'PLAYED',
+  'PLAYBACK_ERROR',
+] as const;
+export type PlaybackStatus = (typeof PLAYBACK_STATUSES)[number];
+export const PLAYBACK_STATUS_LABELS: Record<PlaybackStatus, string> = {
+  PENDING_DOWNLOAD: '待下载',
+  DOWNLOADED: '已下载',
+  PLAYED: '已播放',
+  PLAYBACK_ERROR: '播放异常',
 };
 
 export const DAY_KINDS = ['SCHOOL', 'OFF', 'EXAM_NO_BROADCAST'] as const;
@@ -45,6 +59,7 @@ const membership =
 export const isSource = membership(SOURCES);
 export const isGrade = membership(GRADES);
 export const isRequestStatus = membership(REQUEST_STATUSES);
+export const isPlaybackStatus = membership(PLAYBACK_STATUSES);
 export const isDayKind = membership(DAY_KINDS);
 export const isAdminRole = membership(ADMIN_ROLES);
 

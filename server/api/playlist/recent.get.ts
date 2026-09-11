@@ -1,71 +1,62 @@
 import { and, asc, eq, gte } from 'drizzle-orm';
 import { defineEventHandler, setHeader } from 'h3';
 import { db } from '../../utils/db';
-import { broadcastSlot, schedule, songRequest } from '../../utils/schema';
+import { schedule, songRequest } from '../../utils/schema';
+import { getEffectiveSlots } from '../../utils/schedule';
 import { addDays, shanghaiDate } from '../../utils/time';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'public, max-age=30, s-maxage=30');
+  const dates = await db
+    .selectDistinct({ date: schedule.playDate })
+    .from(schedule)
+    .where(gte(schedule.playDate, addDays(shanghaiDate(), -1)))
+    .orderBy(asc(schedule.playDate));
+  return Promise.all(dates.map(({ date }) => buildPublicDay(date)));
+});
 
+export async function buildPublicDay(date: string) {
+  const slots = await getEffectiveSlots(date);
   const rows = await db
     .select({
-      date: schedule.playDate,
-      slotId: broadcastSlot.id,
-      slotName: broadcastSlot.name,
-      startTime: broadcastSlot.startTime,
-      endTime: broadcastSlot.endTime,
-      slotOrder: broadcastSlot.sortOrder,
-      id: songRequest.id,
-      source: songRequest.source,
-      platformId: songRequest.platformId,
+      slotId: schedule.slotId,
+      orderNo: schedule.orderNo,
       title: songRequest.title,
       artist: songRequest.artist,
-      coverUrl: songRequest.coverUrl,
       durationMs: songRequest.durationMs,
-      orderNo: schedule.orderNo,
-      status: songRequest.status,
     })
     .from(schedule)
     .innerJoin(songRequest, eq(schedule.requestId, songRequest.id))
-    .innerJoin(broadcastSlot, eq(schedule.slotId, broadcastSlot.id))
-    .where(and(gte(schedule.playDate, addDays(shanghaiDate(), -1)), eq(broadcastSlot.enabled, 1)))
-    .orderBy(asc(schedule.playDate), asc(broadcastSlot.sortOrder), asc(schedule.orderNo));
-
-  const days = new Map<string, Map<string, any>>();
-  for (const row of rows) {
-    const slots = days.get(row.date) ?? new Map<string, any>();
-    days.set(row.date, slots);
-    const slot = slots.get(row.slotId) ?? {
-      slotId: row.slotId,
-      slotName: row.slotName,
-      startTime: row.startTime,
-      endTime: row.endTime,
-      totalMs: 0,
-      songs: [],
-      sortOrder: row.slotOrder,
-    };
-    slots.set(row.slotId, slot);
-    slot.totalMs += row.durationMs;
-    slot.songs.push({
-      id: row.id,
-      source: row.source,
-      platformId: row.platformId,
-      title: row.title,
-      artist: row.artist,
-      coverUrl:
-        row.source === 'netease' && row.coverUrl && !row.coverUrl.startsWith('/api/cover/netease?')
-          ? `/api/cover/netease?url=${encodeURIComponent(row.coverUrl)}`
-          : row.coverUrl,
-      durationMs: row.durationMs,
-      orderNo: row.orderNo,
-      status: row.status,
-    });
-  }
-
-  return [...days].map(([date, slots]) => ({
+    .where(and(eq(schedule.playDate, date), eq(songRequest.status, 'SCHEDULED')))
+    .orderBy(asc(schedule.orderNo));
+  return {
     date,
-    slots: [...slots.values()]
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .map(({ sortOrder, ...slot }) => slot),
-  }));
-});
+    slots: slots
+      .map((slot) => {
+        let elapsedMs = 0;
+        const songs = rows
+          .filter((row) => row.slotId === slot.id)
+          .map((row) => {
+            const [hour, minute] = slot.startTime.split(':').map(Number);
+            const seconds = hour * 3600 + minute * 60 + Math.floor(elapsedMs / 1000);
+            elapsedMs += Math.max(0, row.durationMs);
+            return {
+              orderNo: row.orderNo,
+              playTime: `${String(Math.floor(seconds / 3600) % 24).padStart(2, '0')}:${String(
+                Math.floor(seconds / 60) % 60
+              ).padStart(2, '0')}`,
+              title: row.title,
+              artist: row.artist,
+            };
+          });
+        return {
+          slotId: slot.id,
+          slotName: slot.name,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          songs,
+        };
+      })
+      .filter((slot) => slot.songs.length > 0),
+  };
+}

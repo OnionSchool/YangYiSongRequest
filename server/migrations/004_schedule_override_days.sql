@@ -1,0 +1,3 @@
+CREATE TABLE IF NOT EXISTS "DateScheduleOverrideDay" (
+  "date" TEXT PRIMARY KEY NOT NULL
+);

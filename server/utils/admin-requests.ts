@@ -1,9 +1,15 @@
 import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, gte, sql } from 'drizzle-orm';
-import { db } from './db';
+import { db, sqlite } from './db';
 import { songRequest, schedule, broadcastSlot } from './schema';
 import { badRequest, notFound } from './errors';
 import { writeAudit } from './audit';
+import {
+  getEffectiveSlots,
+  updateScheduleVersion,
+  validateSchedulableDate,
+  validateSlotCapacity,
+} from './schedule';
 
 const PAGE_SIZE = 20;
 
@@ -105,58 +111,61 @@ export async function scheduleRequest(
   requestId: string,
   playDate: string,
   slotId: string,
-  actorId: string
+  actorId: string,
+  expectedVersion?: number
 ) {
   const req = await db.select().from(songRequest).where(eq(songRequest.id, requestId)).limit(1);
   if (req.length === 0) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
-
-  const slot = await db.select().from(broadcastSlot).where(eq(broadcastSlot.id, slotId)).limit(1);
-  if (slot.length === 0) throw notFound('SLOT_NOT_FOUND', '找不到该时段');
-
-  // Get next order number
-  const maxOrder = await db
-    .select({ max: sql<number>`COALESCE(MAX(${schedule.orderNo}), 0)` })
-    .from(schedule)
-    .where(and(eq(schedule.playDate, playDate), eq(schedule.slotId, slotId)));
-  const orderNo = (Number((maxOrder[0] as any)?.max) || 0) + 1;
-
+  if (req[0].status !== 'PENDING') throw badRequest('REQUEST_NOT_PENDING', '该请求不可再次排期');
+  await validateSchedulableDate(playDate);
+  const slot = (await getEffectiveSlots(playDate)).find((item) => item.id === slotId);
+  if (!slot) throw notFound('SLOT_NOT_FOUND', '该日期没有启用的目标时段');
+  const capacity = await validateSlotCapacity(playDate, slot, req[0].durationMs);
   const scheduleId = `sch_${randomBytes(8).toString('hex')}`;
-  await db.insert(schedule).values({
-    id: scheduleId,
-    requestId,
+  const now = Math.floor(Date.now() / 1000);
+  const result = sqlite.transaction(() => {
+    const existing = sqlite
+      .prepare('SELECT "id" FROM "Schedule" WHERE "requestId" = ?')
+      .get(requestId);
+    if (existing) throw badRequest('REQUEST_ALREADY_SCHEDULED', '该请求已经排期');
+    const currentCount = sqlite
+      .prepare(
+        'SELECT COUNT(*) AS "count", COALESCE(SUM(r."durationMs"), 0) AS "totalMs" FROM "Schedule" s JOIN "SongRequest" r ON r."id" = s."requestId" WHERE s."playDate" = ? AND s."slotId" = ?'
+      )
+      .get(playDate, slotId) as { count: number; totalMs: number };
+    const orderNo = Number(currentCount.count) + 1;
+    if (slot.maxCount !== null && orderNo > slot.maxCount) {
+      throw badRequest('SLOT_COUNT_EXCEEDED', `已超出该时段上限（${slot.maxCount}首）`);
+    }
+    const limitMs =
+      slot.maxMs ??
+      (Number(slot.endTime.slice(0, 2)) * 60 +
+        Number(slot.endTime.slice(3)) -
+        Number(slot.startTime.slice(0, 2)) * 60 -
+        Number(slot.startTime.slice(3))) *
+        60_000;
+    if (req[0].durationMs > 0 && Number(currentCount.totalMs) + req[0].durationMs > limitMs) {
+      throw badRequest('SLOT_DURATION_EXCEEDED', '该时段已容纳不下这首歌');
+    }
+    const version = updateScheduleVersion(playDate, expectedVersion);
+    sqlite
+      .prepare(
+        'INSERT INTO "Schedule" ("id", "requestId", "playDate", "slotId", "orderNo", "createdAt") VALUES (?, ?, ?, ?, ?, ?)'
+      )
+      .run(scheduleId, requestId, playDate, slotId, orderNo, now);
+    sqlite
+      .prepare(
+        'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = NULL WHERE "id" = ?'
+      )
+      .run('SCHEDULED', 'PENDING_DOWNLOAD', now, actorId, requestId);
+    return { orderNo, version };
+  })();
+  await writeAudit(actorId, 'request.schedule', requestId, {
     playDate,
     slotId,
-    orderNo,
-    createdAt: Math.floor(Date.now() / 1000),
+    orderNo: result.orderNo,
   });
-
-  await db
-    .update(songRequest)
-    .set({
-      status: 'SCHEDULED',
-      reviewedAt: Math.floor(Date.now() / 1000),
-      reviewedById: actorId,
-    })
-    .where(eq(songRequest.id, requestId));
-
-  await writeAudit(actorId, 'request.schedule', requestId, { playDate, slotId, orderNo });
-
-  // Check capacity
-  const slotRow = slot[0] as any;
-  const countResult = await db
-    .select({ count: count() })
-    .from(schedule)
-    .where(and(eq(schedule.playDate, playDate), eq(schedule.slotId, slotId)));
-  const current = Number((countResult[0] as any)?.count ?? 0);
-  const over = slotRow.maxCount != null && current > slotRow.maxCount;
-
-  return {
-    orderNo,
-    capacity: {
-      over,
-      message: over ? `已超出该时段上限（${slotRow.maxCount}首）` : null,
-    },
-  };
+  return { ...result, durationIncomplete: capacity.durationIncomplete };
 }
 
 export async function rejectRequest(requestId: string, reason: string, actorId: string) {
@@ -170,6 +179,7 @@ export async function rejectRequest(requestId: string, reason: string, actorId: 
       rejectReason: reason,
       reviewedAt: Math.floor(Date.now() / 1000),
       reviewedById: actorId,
+      finalizedAt: Math.floor(Date.now() / 1000),
     })
     .where(eq(songRequest.id, requestId));
 
@@ -177,19 +187,30 @@ export async function rejectRequest(requestId: string, reason: string, actorId: 
   return { ok: true as const };
 }
 
-export async function unscheduleRequest(requestId: string, actorId: string) {
-  await db.delete(schedule).where(eq(schedule.requestId, requestId));
-  await db
-    .update(songRequest)
-    .set({
-      status: 'PENDING',
-      reviewedAt: null,
-      reviewedById: null,
-    })
-    .where(eq(songRequest.id, requestId));
+export async function unscheduleRequest(
+  requestId: string,
+  actorId: string,
+  expectedVersion?: number
+) {
+  const scheduled = await db
+    .select()
+    .from(schedule)
+    .where(eq(schedule.requestId, requestId))
+    .limit(1);
+  if (!scheduled[0]) throw notFound('SCHEDULE_NOT_FOUND', '找不到排期记录');
+  const result = sqlite.transaction(() => {
+    const version = updateScheduleVersion(scheduled[0].playDate, expectedVersion);
+    sqlite.prepare('DELETE FROM "Schedule" WHERE "requestId" = ?').run(requestId);
+    sqlite
+      .prepare(
+        'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = NULL, "reviewedById" = NULL WHERE "id" = ?'
+      )
+      .run('PENDING', 'PENDING_DOWNLOAD', requestId);
+    return { version };
+  })();
 
   await writeAudit(actorId, 'schedule.remove', requestId);
-  return { ok: true as const };
+  return { ok: true as const, ...result };
 }
 
 export async function batchRequests(

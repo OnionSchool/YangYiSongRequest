@@ -25,3 +25,6 @@ export const tooMany = (code: string, message: string, detail?: Record<string, u
 
 export const forbidden = (code: string, message: string, detail?: Record<string, unknown>) =>
   new AppError(code, 403, message, detail);
+
+export const conflict = (code: string, message: string, detail?: Record<string, unknown>) =>
+  new AppError(code, 409, message, detail);

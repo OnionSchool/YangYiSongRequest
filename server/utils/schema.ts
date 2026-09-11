@@ -18,6 +18,28 @@ export const broadcastSlot = table('BroadcastSlot', {
   enabled: integer('enabled').notNull().default(1),
 });
 
+export const scheduleDay = table('ScheduleDay', {
+  date: text('date').primaryKey(),
+  version: integer('version').notNull().default(0),
+  updatedAt: integer('updatedAt').notNull(),
+});
+
+export const weeklyScheduleRule = table('WeeklyScheduleRule', {
+  weekday: integer('weekday').notNull(),
+  slotId: text('slotId').notNull(),
+  sortOrder: integer('sortOrder').notNull().default(0),
+});
+
+export const dateScheduleOverride = table('DateScheduleOverride', {
+  date: text('date').notNull(),
+  slotId: text('slotId').notNull(),
+  sortOrder: integer('sortOrder').notNull().default(0),
+});
+
+export const dateScheduleOverrideDay = table('DateScheduleOverrideDay', {
+  date: text('date').primaryKey(),
+});
+
 export const gradeConfig = table('GradeConfig', {
   grade: text('grade').primaryKey(),
   classCount: integer('classCount').notNull(),
@@ -104,6 +126,8 @@ export const songRequest = table('SongRequest', {
     .default(sql`unixepoch()`),
   reviewedAt: integer('reviewedAt'),
   reviewedById: text('reviewedById'),
+  playbackStatus: text('playbackStatus').notNull().default('PENDING_DOWNLOAD'),
+  finalizedAt: integer('finalizedAt'),
 });
 
 export const schedule = table('Schedule', {
