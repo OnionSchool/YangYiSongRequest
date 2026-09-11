@@ -1,7 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
-import { ApiError, GRADE_OPTIONS, submitRequest } from '@/lib/api';
+import {
+  ApiError,
+  GRADE_OPTIONS,
+  checkContent,
+  createPowChallenge,
+  requestContextHash,
+  sha256,
+  submitRequest,
+} from '@/lib/api';
 import type { Grade, Song } from '@/lib/api';
 import { duration } from '@/lib/slots';
 import { useSite } from '@/stores/site';
@@ -42,7 +50,7 @@ async function send(): Promise<void> {
   submitting.value = true;
   failure.value = null;
   try {
-    const result = await submitRequest({
+    const body = {
       source: props.song.source,
       platformId: props.song.platformId,
       title: props.song.title,
@@ -53,6 +61,20 @@ async function send(): Promise<void> {
       ...(site.requireIdentity
         ? { grade: grade.value, classNo: classNo.value, requesterName: name.value.trim() }
         : {}),
+    };
+    const content = await checkContent(body);
+    if (!content.allowed) {
+      failure.value = '提交内容不符合规范，请更换后再试';
+      return;
+    }
+    const contextHash = await sha256(requestContextHash(body));
+    const challenge = await createPowChallenge(contextHash);
+    const nonce = await solvePow(challenge.challengeId, contextHash, challenge.difficulty);
+    const result = await submitRequest({
+      ...body,
+      challengeId: challenge.challengeId,
+      nonce,
+      contextHash,
     });
     code.value = result.queryCode;
   } catch (error) {
@@ -60,6 +82,29 @@ async function send(): Promise<void> {
   } finally {
     submitting.value = false;
   }
+}
+
+function solvePow(challengeId: string, contextHash: string, difficulty: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('../workers/pow.worker.ts', import.meta.url), {
+      type: 'module',
+    });
+    const timeout = window.setTimeout(() => {
+      worker.terminate();
+      reject(new Error('验证超时'));
+    }, 60_000);
+    worker.onmessage = (event: MessageEvent<{ nonce: string }>) => {
+      window.clearTimeout(timeout);
+      worker.terminate();
+      resolve(event.data.nonce);
+    };
+    worker.onerror = () => {
+      window.clearTimeout(timeout);
+      worker.terminate();
+      reject(new Error('浏览器不支持验证'));
+    };
+    worker.postMessage({ challengeId, contextHash, difficulty });
+  });
 }
 
 async function copyCode(): Promise<void> {
@@ -158,10 +203,10 @@ async function copyCode(): Promise<void> {
         <p v-if="failure" class="text-sm text-orange-deep">{{ failure }}</p>
 
         <button type="submit" class="btn-primary w-full py-3" :disabled="submitting">
-          {{ submitting ? '提交中…' : '确认点这首' }}
+          {{ submitting ? '正在验证并提交…' : '确认点这首' }}
         </button>
         <p class="text-xs text-ink-soft">
-          提交后会给一个 6 位查询码。审核通过并排好时段才会出现在播出单里。
+          提交前会进行浏览器验证。提交后会给一个 6 位查询码，审核通过并排好时段才会出现在播出单里。
         </p>
       </form>
     </div>

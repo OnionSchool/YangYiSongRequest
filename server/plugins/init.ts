@@ -9,6 +9,8 @@ export default defineNitroPlugin(async () => {
   await initializeDatabase();
   const { anonymizeFinalizedRequests } = await import('../utils/privacy');
   anonymizeFinalizedRequests();
+  const { cleanupRequestProtection } = await import('../utils/request-protection');
+  cleanupRequestProtection();
 
   console.log('[Nitro] Initialization complete');
 });

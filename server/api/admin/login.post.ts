@@ -1,14 +1,8 @@
-import {
-  createError,
-  defineEventHandler,
-  getRequestHeader,
-  readBody,
-  setHeader,
-  setCookie,
-} from 'h3';
+import { createError, defineEventHandler, readBody, setHeader, setCookie } from 'h3';
 import { login } from '../../utils/auth';
 import { writeAudit } from '../../utils/audit';
 import { readSite } from '../../utils/site';
+import { getClientIp } from '../../utils/request-ip';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -23,10 +17,7 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const ip =
-    getRequestHeader(event, 'x-forwarded-for')?.split(',')[0]?.trim() ??
-    event.node.req.socket.remoteAddress ??
-    'unknown';
+  const ip = getClientIp(event);
   const { token, session } = await login(username, password, ip);
 
   setCookie(event, 'admin_token', token, {

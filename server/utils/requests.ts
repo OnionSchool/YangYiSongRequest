@@ -123,7 +123,10 @@ export async function submitRequest(input: any, ip: string): Promise<{ queryCode
   }
   assertDailyLimits(ipUsed, identityUsed);
 
-  const flagged = await findBannedHits(song.title, song.artist);
+  const flagged = await findBannedHits(song.title, song.artist, identity?.requesterName);
+  if (flagged.length > 0) {
+    throw badRequest('CONTENT_BLOCKED', '提交内容不符合规范，请更换后再试');
+  }
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {

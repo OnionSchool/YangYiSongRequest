@@ -1,5 +1,7 @@
 import { createError, defineEventHandler, readBody, setHeader } from 'h3';
 import { submitRequest } from '../utils/requests';
+import { getClientIp } from '../utils/request-ip';
+import { verifyAndConsumePow } from '../utils/request-protection';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -13,7 +15,8 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  const ip = event.node.req.socket.remoteAddress || '';
+  const ip = getClientIp(event);
+  verifyAndConsumePow(body, ip);
 
   const result = await submitRequest(body, ip);
   return result;

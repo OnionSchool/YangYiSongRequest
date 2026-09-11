@@ -164,3 +164,28 @@ export const systemAlert = table('SystemAlert', {
     .default(sql`unixepoch()`),
   resolvedAt: integer('resolvedAt'),
 });
+
+export const powChallenge = table('PowChallenge', {
+  id: text('id').primaryKey(),
+  contextHash: text('contextHash').notNull(),
+  ipHash: text('ipHash').notNull(),
+  difficulty: integer('difficulty').notNull(),
+  expiresAt: integer('expiresAt').notNull(),
+  usedAt: integer('usedAt'),
+  failedAttempts: integer('failedAttempts').notNull().default(0),
+});
+
+export const powNonce = table('PowNonce', {
+  challengeId: text('challengeId').notNull(),
+  nonceHash: text('nonceHash').notNull(),
+  usedAt: integer('usedAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+});
+
+export const requestRateLimit = table('RequestRateLimit', {
+  key: text('key').primaryKey(),
+  windowStart: integer('windowStart').notNull(),
+  count: integer('count').notNull().default(0),
+  blockedUntil: integer('blockedUntil'),
+});

@@ -174,7 +174,50 @@ export interface SubmitBody {
   album?: string;
   durationMs?: number;
   coverUrl?: string;
+  challengeId?: string;
+  nonce?: string;
+  contextHash?: string;
 }
+
+export interface PowChallenge {
+  challengeId: string;
+  difficulty: number;
+  expiresAt: number;
+}
+
+export function requestContextHash(
+  body: Omit<SubmitBody, 'challengeId' | 'nonce' | 'contextHash'>
+): string {
+  return JSON.stringify({
+    source: body.source,
+    platformId: body.platformId.trim(),
+    title: body.title?.trim() ?? '',
+    artist: body.artist?.trim() ?? '',
+    album: body.album?.trim() ?? '',
+    durationMs: Number(body.durationMs) || 0,
+    grade: body.grade ?? '',
+    classNo: Number(body.classNo) || 0,
+    requesterName: body.requesterName?.trim() ?? '',
+  });
+}
+
+export async function sha256(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export const createPowChallenge = (contextHash: string) =>
+  apiFetch<PowChallenge>('/api/request/challenge', {
+    method: 'POST',
+    body: JSON.stringify({ contextHash }),
+  });
+
+export const checkContent = (body: Pick<SubmitBody, 'title' | 'artist' | 'requesterName'>) =>
+  apiFetch<{ allowed: boolean }>('/api/content/check', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
 
 export const submitRequest = (body: SubmitBody) =>
   apiFetch<{ queryCode: string }>('/api/request', { method: 'POST', body: JSON.stringify(body) });
