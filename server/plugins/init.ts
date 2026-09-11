@@ -5,13 +5,8 @@
 export default defineNitroPlugin(async () => {
   console.log('[Nitro] Starting initialization...');
 
-  // Run database initialization
-  try {
-    const { initializeDatabase } = await import('../utils/init-db');
-    await initializeDatabase();
-  } catch (error) {
-    console.error('[Nitro] Database initialization failed:', error);
-  }
+  const { initializeDatabase } = await import('../utils/init-db');
+  await initializeDatabase();
 
   console.log('[Nitro] Initialization complete');
 });
