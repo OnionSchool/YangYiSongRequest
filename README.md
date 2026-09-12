@@ -27,8 +27,19 @@ npm run test:e2e
 
 ## 文档
 
-- [接口契约](docs/API.md)
-- [部署与备份](docs/DEPLOY.md)
-- [需求与验收](docs/REQUIREMENTS.md)
-- [架构上下文](docs/CONTEXT.md)
-- [实施进度](docs/PROGRESS.md)
+项目文档现由 VitePress 提供：
+
+```bash
+npm run docs:dev
+```
+
+构建静态文档：
+
+```bash
+npm run docs:build
+```
+
+- [文档首页](docs/index.md)
+- [系统简介](docs/guide/introduction.md)
+- [部署与运维](docs/operations/deployment.md)
+- [API 参考](docs/reference/api.md)

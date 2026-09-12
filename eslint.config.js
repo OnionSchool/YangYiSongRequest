@@ -16,6 +16,7 @@ export default [
       '.nuxt/**',
       '.output/**',
       '**/dist/**',
+      'docs/.vitepress/cache/**',
       'legacy-server/**',
       'server/src/generated/**',
       'web/dist/**',

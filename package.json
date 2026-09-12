@@ -7,6 +7,9 @@
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
@@ -47,6 +50,7 @@
     "prettier": "^3.9.6",
     "typescript": "6.0.3",
     "typescript-eslint": "^8.70.0",
+    "vitepress": "^1.6.4",
     "vitest": "^4.1.11",
     "vue-eslint-parser": "^10.4.1"
   }
