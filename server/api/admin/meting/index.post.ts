@@ -37,7 +37,8 @@ export default defineEventHandler(async (event) => {
 
   if (!name) throw badRequest('BAD_NAME', '请填写 API 名称');
   if (!baseUrl) throw badRequest('BAD_URL', '请填写 API 地址');
-  await validateExternalUrl(baseUrl);
+  const baseUrlHost = new URL(baseUrl).hostname;
+  await validateExternalUrl(baseUrl, [baseUrlHost]);
 
   const validPlatforms = platforms.filter(
     (p: unknown) => typeof p === 'string' && VALID_PLATFORMS.includes(p)

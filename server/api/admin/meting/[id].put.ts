@@ -43,7 +43,8 @@ export default defineEventHandler(async (event) => {
   if (typeof body.baseUrl === 'string') {
     const baseUrl = body.baseUrl.trim();
     if (!baseUrl) throw badRequest('BAD_URL', '请填写 API 地址');
-    await validateExternalUrl(baseUrl);
+    const baseUrlHost = new URL(baseUrl).hostname;
+    await validateExternalUrl(baseUrl, [baseUrlHost]);
     updates.baseUrl = baseUrl;
   }
   if (Array.isArray(body.platforms)) {

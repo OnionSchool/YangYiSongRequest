@@ -12,13 +12,14 @@ function toMetingServer(source: SourceId): string {
   return source === 'qq' ? 'tencent' : source;
 }
 
-async function validateBaseUrl(value: unknown): Promise<string> {
+async function validateBaseUrl(value: unknown): Promise<{ baseUrl: string; host: string }> {
   if (typeof value !== 'string' || !value.trim()) {
     throw badRequest('BAD_URL', '请填写 API 地址');
   }
   const baseUrl = value.trim();
-  await validateExternalUrl(baseUrl);
-  return baseUrl.replace(/\/+$/, '');
+  const host = new URL(baseUrl).hostname;
+  await validateExternalUrl(baseUrl, [host]);
+  return { baseUrl: baseUrl.replace(/\/+$/, ''), host };
 }
 
 export default defineEventHandler(async (event) => {
@@ -28,7 +29,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{ baseUrl?: unknown; platforms?: unknown; capabilities?: unknown }>(
     event
   );
-  const baseUrl = await validateBaseUrl(body.baseUrl);
+  const { baseUrl, host } = await validateBaseUrl(body.baseUrl);
   const platforms = Array.isArray(body.platforms)
     ? body.platforms.filter(
         (platform): platform is SourceId =>
@@ -53,9 +54,13 @@ export default defineEventHandler(async (event) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
         try {
-          const response = await fetchExternal(`${baseUrl}?${params}`, {
-            signal: controller.signal,
-          });
+          const response = await fetchExternal(
+            `${baseUrl}?${params}`,
+            {
+              signal: controller.signal,
+            },
+            [host]
+          );
           const text = await response.text();
           if (!response.ok) {
             return { source, ok: false, detail: `HTTP ${response.status}` };

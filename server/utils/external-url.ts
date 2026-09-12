@@ -1,15 +1,25 @@
 import { lookup } from 'node:dns/promises';
 import type { LookupAddress } from 'node:dns';
 import { isIP } from 'node:net';
+import { db } from './db';
 import { badRequest } from './errors';
+import { metingApi } from './schema';
 
-function allowedHosts(): Set<string> {
-  return new Set(
+function configuredHosts(): Set<string> {
+  const hosts = new Set(
     (process.env.MUSIC_EXTERNAL_HOSTS ?? '')
       .split(',')
       .map((host) => host.trim().toLowerCase())
       .filter(Boolean)
   );
+  try {
+    for (const { baseUrl } of db.select({ baseUrl: metingApi.baseUrl }).from(metingApi).all()) {
+      hosts.add(new URL(baseUrl).hostname.toLowerCase());
+    }
+  } catch {
+    // The database may not be initialized while running isolated validation tests.
+  }
+  return hosts;
 }
 
 function isPrivateAddress(address: string): boolean {
@@ -41,7 +51,10 @@ function isPrivateAddress(address: string): boolean {
   return true;
 }
 
-export async function validateExternalUrl(value: string): Promise<URL> {
+export async function validateExternalUrl(
+  value: string,
+  additionalTrustedHosts: Iterable<string> = []
+): Promise<URL> {
   let url: URL;
   try {
     url = new URL(value);
@@ -51,7 +64,9 @@ export async function validateExternalUrl(value: string): Promise<URL> {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
     throw badRequest('BAD_URL', '地址必须是 HTTP 或 HTTPS 公网地址');
   }
-  if (!allowedHosts().has(url.hostname.toLowerCase())) {
+  const hosts = configuredHosts();
+  for (const host of additionalTrustedHosts) hosts.add(host.toLowerCase());
+  if (!hosts.has(url.hostname.toLowerCase())) {
     throw badRequest('BAD_URL', '地址主机不在允许列表中');
   }
   let addresses: LookupAddress[];
@@ -68,16 +83,17 @@ export async function validateExternalUrl(value: string): Promise<URL> {
 
 export async function fetchExternal(
   input: string | URL,
-  init: RequestInit = {}
+  init: RequestInit = {},
+  additionalTrustedHosts: Iterable<string> = []
 ): Promise<Response> {
-  let url = await validateExternalUrl(String(input));
+  let url = await validateExternalUrl(String(input), additionalTrustedHosts);
   if (init.redirect === 'manual') return fetch(url, init);
   for (let redirects = 0; redirects < 5; redirects += 1) {
     const response = await fetch(url, { ...init, redirect: 'manual' });
     if (response.status < 300 || response.status >= 400) return response;
     const location = response.headers.get('location');
     if (!location) return response;
-    url = await validateExternalUrl(new URL(location, url).toString());
+    url = await validateExternalUrl(new URL(location, url).toString(), additionalTrustedHosts);
   }
   throw badRequest('TOO_MANY_REDIRECTS', '外部地址重定向次数过多');
 }

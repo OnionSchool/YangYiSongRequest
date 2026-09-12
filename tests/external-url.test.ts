@@ -11,6 +11,9 @@ describe('外部地址校验', () => {
     await expect(validateExternalUrl('http://192.168.1.1/')).rejects.toMatchObject({
       code: 'BAD_URL',
     });
+    await expect(validateExternalUrl('http://127.0.0.1/', ['127.0.0.1'])).rejects.toMatchObject({
+      code: 'BAD_URL',
+    });
   });
 
   it('拒绝非 HTTP 协议', async () => {
