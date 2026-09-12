@@ -136,6 +136,7 @@ export const songRequest = table('SongRequest', {
   flaggedWords: text('flaggedWords').notNull().default('[]'),
   isManual: integer('isManual').notNull().default(0),
   submitIp: text('submitIp').notNull(),
+  submitUserAgent: text('submitUserAgent'),
   createdAt: integer('createdAt')
     .notNull()
     .default(sql`unixepoch()`),

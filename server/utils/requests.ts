@@ -71,7 +71,11 @@ export function assertDailyLimits(ipUsed: number, identityUsed: number | null): 
   }
 }
 
-export async function submitRequest(input: any, ip: string): Promise<{ queryCode: string }> {
+export async function submitRequest(
+  input: any,
+  ip: string,
+  userAgent?: string
+): Promise<{ queryCode: string }> {
   const site = await readSite();
   if (!site.requestsOpen) throw badRequest('REQUESTS_CLOSED', '点歌通道现在关着，等台里再开');
 
@@ -146,6 +150,7 @@ export async function submitRequest(input: any, ip: string): Promise<{ queryCode
         requesterName: identity?.requesterName ?? null,
         flaggedWords: encodeWordList(flagged),
         submitIp: ip,
+        submitUserAgent: userAgent ?? null,
       });
       return { queryCode: qc };
     } catch (error) {

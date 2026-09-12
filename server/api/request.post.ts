@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, readBody, setHeader } from 'h3';
+import { createError, defineEventHandler, getRequestHeader, readBody, setHeader } from 'h3';
 import { submitRequest } from '../utils/requests';
 import { getClientIp } from '../utils/request-ip';
 import { verifyAndConsumePow } from '../utils/request-protection';
@@ -18,6 +18,6 @@ export default defineEventHandler(async (event) => {
   const ip = getClientIp(event);
   verifyAndConsumePow(body, ip);
 
-  const result = await submitRequest(body, ip);
+  const result = await submitRequest(body, ip, getRequestHeader(event, 'user-agent') ?? undefined);
   return result;
 });

@@ -162,6 +162,32 @@ export const manualAdd = (body: {
 
 export const listAudit = (page = 1) => apiFetch<AuditPage>(`/api/admin/audit?page=${page}`);
 
+export interface SongRequestRecord {
+  id: string;
+  queryCode: string;
+  source: SourceId;
+  platformId: string;
+  title: string;
+  artist: string;
+  album: string | null;
+  durationMs: number;
+  coverUrl: string | null;
+  grade: string | null;
+  classNo: number | null;
+  requesterName: string | null;
+  status: RequestStatus;
+  rejectReason: string | null;
+  isManual: boolean;
+  submitIp: string;
+  submitUserAgent: string | null;
+  createdAt: string;
+}
+
+export const listSongRequestRecords = (page = 1) =>
+  apiFetch<{ total: number; page: number; pageSize: number; items: SongRequestRecord[] }>(
+    `/api/admin/request-records?page=${page}`
+  );
+
 // ---- 以下只有超管能调（S7 配置）----
 
 export interface SlotRow {

@@ -49,6 +49,7 @@ const navGroups = computed(() => [
             { to: '/admin/sources', icon: '🎵', label: '音源状态' },
             { to: '/admin/alerts', icon: '⚠️', label: '系统告警' },
             { to: '/admin/audit', icon: '📜', label: '操作日志' },
+            { to: '/admin/request-records', icon: '🧾', label: '点歌记录' },
             { to: '/admin/users', icon: '👥', label: '账号管理' },
           ],
         },
