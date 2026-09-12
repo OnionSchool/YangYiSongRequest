@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
 
   try {
     // Keep a short private browser cache; shared server caching protects Meting APIs.
-    setHeader(event, 'Cache-Control', 'private, max-age=60');
+    setHeader(event, 'Cache-Control', 'private, max-age=7200');
     return await searchSongs(source, keyword, page);
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误';

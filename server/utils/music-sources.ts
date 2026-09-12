@@ -38,8 +38,8 @@ export class SourceError extends Error {
 
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 20;
-const SEARCH_CACHE_TTL_MS = 10 * 60_000;
-const SEARCH_CACHE_MAX_ENTRIES = 200;
+const SEARCH_CACHE_TTL_MS = 60 * 60_000;
+const SEARCH_CACHE_MAX_ENTRIES = 400;
 const ffprobe = promisify(execFile);
 
 interface CachedSearchPage {
