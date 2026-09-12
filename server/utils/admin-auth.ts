@@ -15,6 +15,8 @@ export function getDebugSession(event: H3Event): AdminSession {
     displayName: '调试用户',
     role,
     mustChangePassword: false,
+    email: null,
+    emailVerified: false,
     csrfToken: 'debug',
   };
 }

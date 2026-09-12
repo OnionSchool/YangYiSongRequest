@@ -21,6 +21,11 @@ export function getChatContext(): ChatContext | undefined {
   return localStorage.getStore();
 }
 
+/** Set request-local context for the current async execution chain. */
+export function enterChatContext(context: ChatContext): void {
+  localStorage.enterWith(context);
+}
+
 export function setChatContext<T>(context: ChatContext, callback: () => T): T {
   let inner: T | undefined;
   return localStorage.run(context, () => {

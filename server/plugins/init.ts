@@ -11,6 +11,8 @@ export default defineNitroPlugin(async () => {
   anonymizeFinalizedRequests();
   const { cleanupRequestProtection } = await import('../utils/request-protection');
   cleanupRequestProtection();
+  const { cleanupAuditLogs } = await import('../utils/audit');
+  cleanupAuditLogs();
 
   console.log('[Nitro] Initialization complete');
 });

@@ -1,6 +1,6 @@
-import { db } from './db';
+import { db, sqlite } from './db';
 import { auditLog } from './schema';
-import { getChatContext, withChatContext } from './chatContext';
+import { enterChatContext, getChatContext, withChatContext } from './chatContext';
 import { encodeDetail } from './domain';
 
 export type AuditAction =
@@ -27,7 +27,11 @@ export type AuditAction =
   | 'user.update'
   | 'source.login'
   | 'source.cookie'
-  | 'source.clear';
+  | 'source.clear'
+  | 'meting.create'
+  | 'meting.update'
+  | 'meting.delete'
+  | 'email.bind';
 
 export interface AuditContext {
   ip?: string;
@@ -38,9 +42,24 @@ export function runWithAuditContext<T>(context: AuditContext, callback: () => T)
   return withChatContext(context, callback);
 }
 
+export function setAuditContext(context: AuditContext): void {
+  enterChatContext(context);
+}
+
 /**
  * Write an audit log entry. Log failures should not block the calling process.
  */
+export const AUDIT_RETENTION_SECONDS = 90 * 24 * 60 * 60;
+
+export function cleanupAuditLogs(): void {
+  try {
+    const cutoff = Math.floor(Date.now() / 1000) - AUDIT_RETENTION_SECONDS;
+    sqlite.prepare('DELETE FROM "AuditLog" WHERE "createdAt" < ?').run(cutoff);
+  } catch {
+    // Retention cleanup must not prevent the application from starting.
+  }
+}
+
 export async function writeAudit(
   actorId: string | null,
   action: AuditAction,

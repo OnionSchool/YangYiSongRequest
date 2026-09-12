@@ -58,11 +58,22 @@ export interface AdminScheduleSong {
 
 export interface AuditEntry {
   id: string;
+  actorId: string | null;
   actor: string;
   action: string;
   targetId: string | null;
   detail: unknown;
+  ip: string;
+  userAgent: string;
   createdAt: string;
+}
+
+export interface AuditPage {
+  total: number;
+  page: number;
+  pageSize: number;
+  retentionDays: number;
+  items: AuditEntry[];
 }
 
 const post = <T>(path: string, body?: unknown) =>
@@ -149,8 +160,7 @@ export const manualAdd = (body: {
   slotId?: string;
 }) => post<{ id: string; queryCode: string }>('/api/admin/requests/manual', body);
 
-export const listAudit = (page = 1) =>
-  apiFetch<{ total: number; page: number; items: AuditEntry[] }>(`/api/admin/audit?page=${page}`);
+export const listAudit = (page = 1) => apiFetch<AuditPage>(`/api/admin/audit?page=${page}`);
 
 // ---- 以下只有超管能调（S7 配置）----
 
