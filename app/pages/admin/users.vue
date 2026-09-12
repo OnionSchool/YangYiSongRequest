@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { readUsers, createUser, patchUser, type AdminUserRow } from '~/lib/adminApi';
+import {
+  readUsers,
+  createUser,
+  batchCreateUsers,
+  patchUser,
+  type AdminUserRow,
+} from '~/lib/adminApi';
 import { ApiError } from '~/lib/api';
 
 definePageMeta({ layout: 'admin' });
@@ -18,6 +24,13 @@ const newPassword = ref('');
 const newRole = ref<'SUPER' | 'PLANNER' | 'TECHNICIAN'>('PLANNER');
 const creating = ref(false);
 
+// Batch import
+const showBatch = ref(false);
+const batchText = ref('');
+const batchRole = ref<'SUPER' | 'PLANNER' | 'TECHNICIAN'>('PLANNER');
+const batchBusy = ref(false);
+const batchResults = ref<Array<{ username: string; ok: boolean; message?: string }> | null>(null);
+
 async function load() {
   loading.value = true;
   error.value = null;
@@ -27,6 +40,52 @@ async function load() {
     error.value = e.message ?? '加载失败';
   } finally {
     loading.value = false;
+  }
+}
+
+function parseBatchLines(text: string) {
+  return text
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      // Support: username,password[,displayName] or username password [displayName]
+      // Try comma first, fall back to whitespace
+      const parts = line.includes(',') ? line.split(',').map((p) => p.trim()) : line.split(/\s+/);
+      return {
+        username: parts[0] || '',
+        password: parts[1] || '',
+        displayName: parts[2] || undefined,
+        role: batchRole.value,
+      };
+    })
+    .filter((u) => u.username && u.password);
+}
+
+async function doBatchImport() {
+  const users = parseBatchLines(batchText.value);
+  if (users.length === 0) {
+    error.value = '未解析到有效用户，请检查格式';
+    return;
+  }
+  batchBusy.value = true;
+  error.value = null;
+  msg.value = null;
+  batchResults.value = null;
+  try {
+    const res = await batchCreateUsers(users);
+    batchResults.value = res.results;
+    if (res.failed === 0) {
+      msg.value = `成功导入 ${res.success} 个用户`;
+      batchText.value = '';
+    } else {
+      msg.value = `成功 ${res.success} 个，失败 ${res.failed} 个`;
+    }
+    await load();
+  } catch (e: any) {
+    error.value = e instanceof ApiError ? e.message : '导入失败';
+  } finally {
+    batchBusy.value = false;
   }
 }
 
@@ -118,29 +177,44 @@ onMounted(load);
         <h1 class="text-xl font-bold" style="font-family: var(--font-display)">账号管理</h1>
         <p class="text-sm text-ink-faint mt-0.5">管理后台管理员账号</p>
       </div>
-      <button
-        class="btn-primary px-4 py-2 text-sm flex items-center gap-1.5"
-        @click="showNew = !showNew"
-      >
-        <svg
-          v-if="!showNew"
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+      <div class="flex gap-2">
+        <button
+          class="rounded-lg border border-rule px-4 py-2 text-sm flex items-center gap-1.5 hover:border-ink-faint transition-colors"
+          :class="showBatch ? 'bg-paper-deep/30 font-medium' : ''"
+          @click="
+            showBatch = !showBatch;
+            if (showBatch) showNew = false;
+          "
         >
-          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-          <circle cx="9" cy="7" r="4" />
-          <line x1="19" x2="19" y1="8" y2="14" />
-          <line x1="22" x2="16" y1="11" y2="11" />
-        </svg>
-        {{ showNew ? '取消' : '新建账号' }}
-      </button>
+          {{ showBatch ? '取消导入' : '批量导入' }}
+        </button>
+        <button
+          class="btn-primary px-4 py-2 text-sm flex items-center gap-1.5"
+          @click="
+            showNew = !showNew;
+            if (showNew) showBatch = false;
+          "
+        >
+          <svg
+            v-if="!showNew"
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <line x1="19" x2="19" y1="8" y2="14" />
+            <line x1="22" x2="16" y1="11" y2="11" />
+          </svg>
+          {{ showNew ? '取消' : '新建账号' }}
+        </button>
+      </div>
     </div>
 
     <div
@@ -207,6 +281,72 @@ onMounted(load);
           >
             {{ creating ? '创建中…' : '创建' }}
           </button>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Batch import form -->
+    <Transition
+      enter-active-class="transition duration-200 ease-out"
+      enter-from-class="opacity-0 -translate-y-2"
+      leave-active-class="transition duration-150 ease-in"
+      leave-to-class="opacity-0 -translate-y-2"
+    >
+      <div v-if="showBatch" class="mb-5 paper-card p-5 space-y-3">
+        <h3 class="font-medium">批量导入用户</h3>
+        <p class="text-sm text-ink-faint">
+          每行一个用户，格式：<code class="bg-paper-deep/40 px-1.5 py-0.5 rounded text-xs"
+            >用户名,密码,显示名称(可选)</code
+          >，也支持空格分隔
+        </p>
+        <div class="flex items-center gap-2">
+          <span class="text-sm text-ink-soft">角色：</span>
+          <select
+            v-model="batchRole"
+            class="rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm focus:border-ink-faint focus:outline-none"
+          >
+            <option value="PLANNER">策划</option>
+            <option value="TECHNICIAN">技术员</option>
+            <option value="SUPER">超级管理员</option>
+          </select>
+          <span class="text-xs text-ink-faint">所有导入用户统一分配此角色</span>
+        </div>
+        <textarea
+          v-model="batchText"
+          rows="8"
+          class="w-full rounded-lg border border-rule bg-paper px-4 py-3 text-sm font-mono leading-relaxed focus:border-ink-faint focus:outline-none transition-colors"
+          placeholder="zhangsan,Abc123456789
+li_si,Password1234,李四
+wangwu Pass12345678 王五"
+        />
+        <div class="flex items-center gap-3">
+          <button
+            class="btn-primary px-5 py-2 text-sm disabled:opacity-50"
+            :disabled="batchBusy || !batchText.trim()"
+            @click="doBatchImport"
+          >
+            {{ batchBusy ? '导入中…' : `导入 (${parseBatchLines(batchText).length} 个用户)` }}
+          </button>
+        </div>
+        <!-- Batch results -->
+        <div v-if="batchResults" class="rounded-lg border border-rule overflow-hidden">
+          <div class="max-h-48 overflow-y-auto">
+            <div
+              v-for="(r, i) in batchResults"
+              :key="i"
+              class="flex items-center gap-2 px-3 py-1.5 text-sm border-b border-rule last:border-0"
+              :class="r.ok ? '' : 'bg-red-50/50'"
+            >
+              <span
+                class="shrink-0 w-4 text-center"
+                :class="r.ok ? 'text-green-600' : 'text-red-500'"
+              >
+                {{ r.ok ? '✓' : '✗' }}
+              </span>
+              <span class="font-mono">{{ r.username }}</span>
+              <span v-if="r.message" class="text-xs text-red-600 ml-auto">{{ r.message }}</span>
+            </div>
+          </div>
         </div>
       </div>
     </Transition>

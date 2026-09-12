@@ -277,6 +277,20 @@ export const createUser = (body: {
   role: AdminRole;
   displayName?: string;
 }) => post<{ id: string }>('/api/admin/users', body);
+export const batchCreateUsers = (
+  users: Array<{
+    username: string;
+    password: string;
+    role: AdminRole;
+    displayName?: string;
+  }>
+) =>
+  post<{
+    success: number;
+    failed: number;
+    results: Array<{ username: string; ok: boolean; message?: string }>;
+  }>('/api/admin/users/batch', { users });
+
 export const patchUser = (
   id: string,
   body: { disabled?: boolean; role?: AdminRole; password?: string; displayName?: string | null }
