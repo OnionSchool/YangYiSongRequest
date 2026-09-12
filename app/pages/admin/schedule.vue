@@ -4,8 +4,8 @@ import {
   readDay,
   unscheduleRequest,
   updatePlaybackStatus,
-  songDownloadUrl,
-  dayZipUrl,
+  downloadDayZip,
+  downloadSong,
   type AdminDaySlot,
 } from '~/lib/adminApi';
 import { useAdmin } from '~/stores/admin';
@@ -59,6 +59,24 @@ async function setPlaybackStatus(
     await load();
   } catch (e: any) {
     error.value = e.message ?? '操作失败';
+  }
+}
+
+async function downloadSongFile(id: string) {
+  error.value = null;
+  try {
+    await downloadSong(id);
+  } catch (e: any) {
+    error.value = e.message ?? '下载失败';
+  }
+}
+
+async function downloadDayFile() {
+  error.value = null;
+  try {
+    await downloadDayZip(selectedDate.value);
+  } catch (e: any) {
+    error.value = e.message ?? '下载失败';
   }
 }
 
@@ -128,12 +146,13 @@ onMounted(load);
           <polyline points="15 18 9 12 15 6" />
         </svg>
       </button>
-      <a
+      <button
         v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
-        :href="dayZipUrl(selectedDate)"
         class="ml-auto rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint"
-        >下载当天 ZIP</a
+        @click="downloadDayFile"
       >
+        下载当天 ZIP
+      </button>
       <div class="paper-card flex items-center gap-3 px-4 py-2">
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -256,12 +275,13 @@ onMounted(load);
             <span class="rounded bg-paper-deep/40 px-2 py-1 text-xs">{{
               playbackLabels[song.playbackStatus]
             }}</span>
-            <a
+            <button
               v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
-              :href="songDownloadUrl(song.id)"
               class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
-              >下载</a
+              @click="downloadSongFile(song.id)"
             >
+              下载
+            </button>
             <button
               v-if="
                 (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&

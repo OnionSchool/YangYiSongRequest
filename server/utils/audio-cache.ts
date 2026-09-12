@@ -5,6 +5,7 @@ import { db, sqlite } from './db';
 import { audioCacheObject, songRequest } from './schema';
 import { eq } from 'drizzle-orm';
 import { badRequest, notFound } from './errors';
+import { readDownloadTemplates, validateDownloadTemplate } from './download-config';
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'audio-cache');
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -14,15 +15,6 @@ export interface CachedAudio {
   body: Buffer;
   mimeType: string;
   fileName: string;
-}
-
-function trustedHosts(): Set<string> {
-  return new Set(
-    (process.env.MUSIC_DOWNLOAD_TRUSTED_HOSTS ?? '')
-      .split(',')
-      .map((host: string) => host.trim().toLowerCase())
-      .filter(Boolean)
-  );
 }
 
 function safeFileName(value: string): string {
@@ -73,18 +65,16 @@ async function readCached(requestId: string, title: string): Promise<CachedAudio
   }
 }
 
-function requireDownloadUrl(source: string, platformId: string): URL {
-  const raw = process.env[`MUSIC_DOWNLOAD_URL_${source.toUpperCase()}`];
+async function requireDownloadUrl(source: string, platformId: string): Promise<URL> {
+  const templates = await readDownloadTemplates();
+  const raw = templates[source as keyof typeof templates];
   if (!raw) throw badRequest('DOWNLOAD_UNAVAILABLE', '该音源未配置受控下载地址');
+  validateDownloadTemplate(raw);
   let target: URL;
   try {
-    target = new URL(raw.replace('{id}', encodeURIComponent(platformId)));
+    target = new URL(raw.replaceAll('{id}', encodeURIComponent(platformId)));
   } catch {
     throw badRequest('DOWNLOAD_UNAVAILABLE', '音源下载地址配置无效');
-  }
-  const hosts = trustedHosts();
-  if (target.protocol !== 'https:' || !hosts.has(target.hostname.toLowerCase())) {
-    throw badRequest('DOWNLOAD_UNAVAILABLE', '音源下载地址不在可信范围内');
   }
   return target;
 }
@@ -93,7 +83,7 @@ async function downloadAudio(
   source: string,
   platformId: string
 ): Promise<{ body: Buffer; mimeType: string }> {
-  const target = requireDownloadUrl(source, platformId);
+  const target = await requireDownloadUrl(source, platformId);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {

@@ -1,37 +1,64 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { checkSources, type SourceHealthRow } from '~/lib/adminApi';
+import {
+  checkSources,
+  readDownloadTemplates,
+  saveDownloadTemplates,
+  type DownloadTemplates,
+  type SourceHealthRow,
+} from '~/lib/adminApi';
 
 definePageMeta({ layout: 'admin' });
 
 const sources = ref<SourceHealthRow[]>([]);
 const loading = ref(false);
 const checking = ref(false);
+const templates = ref<DownloadTemplates>({ netease: '', qq: '', kugou: '' });
+const configMessage = ref<string | null>(null);
 
 async function load() {
   loading.value = true;
   try {
-    sources.value = await checkSources();
+    const [health, downloadConfig] = await Promise.allSettled([
+      checkSources(),
+      readDownloadTemplates(),
+    ]);
+    if (health.status === 'fulfilled') {
+      sources.value = health.value;
+    } else {
+      sources.value = [
+        {
+          source: 'netease',
+          label: '网易云音乐',
+          ok: true,
+          detail: '搜索可用',
+          hasCredential: false,
+        },
+        {
+          source: 'qq',
+          label: 'QQ 音乐',
+          ok: true,
+          detail: '搜索可用（可能触发限流）',
+          hasCredential: false,
+        },
+        { source: 'kugou', label: '酷狗音乐', ok: true, detail: '搜索可用', hasCredential: false },
+      ];
+    }
+    if (downloadConfig.status === 'fulfilled') templates.value = downloadConfig.value.templates;
   } catch {
-    sources.value = [
-      {
-        source: 'netease',
-        label: '网易云音乐',
-        ok: true,
-        detail: '搜索可用',
-        hasCredential: false,
-      },
-      {
-        source: 'qq',
-        label: 'QQ 音乐',
-        ok: true,
-        detail: '搜索可用（可能触发限流）',
-        hasCredential: false,
-      },
-      { source: 'kugou', label: '酷狗音乐', ok: true, detail: '搜索可用', hasCredential: false },
-    ];
+    sources.value = [];
   } finally {
     loading.value = false;
+  }
+}
+
+async function saveDownloads() {
+  configMessage.value = null;
+  try {
+    templates.value = (await saveDownloadTemplates(templates.value)).templates;
+    configMessage.value = '已保存';
+  } catch (error: any) {
+    configMessage.value = error.message ?? '保存失败';
   }
 }
 
@@ -55,7 +82,7 @@ onMounted(load);
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-xl font-bold" style="font-family: var(--font-display)">音源状态</h1>
-        <p class="text-sm text-ink-faint mt-0.5">查看各音乐平台搜索可用性</p>
+        <p class="text-sm text-ink-faint mt-0.5">查看搜索可用性，并维护获授权的下载代理</p>
       </div>
       <button
         class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-soft hover:border-ink-faint hover:text-ink transition-colors flex items-center gap-1.5 disabled:opacity-50"
@@ -113,6 +140,34 @@ onMounted(load);
           </div>
         </div>
       </div>
+
+      <section class="paper-card p-5 space-y-4">
+        <div>
+          <h2 class="font-medium">受控下载地址</h2>
+          <p class="mt-1 text-sm text-ink-faint">
+            仅填写校内获授权下载代理的 HTTPS 模板；必须包含
+            <code>{id}</code>，且主机需由部署者加入可信白名单。
+          </p>
+        </div>
+        <label v-for="src in sources" :key="src.source" class="block">
+          <span class="text-sm font-medium">{{ src.label }}</span>
+          <input
+            v-model="templates[src.source]"
+            type="url"
+            placeholder="https://audio.example.edu/source/{id}"
+            class="mt-1.5 w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-mono focus:border-ink-faint focus:outline-none"
+          />
+        </label>
+        <div class="flex items-center gap-3">
+          <button class="btn-primary px-4 py-2 text-sm" @click="saveDownloads">保存下载地址</button>
+          <span
+            v-if="configMessage"
+            class="text-sm"
+            :class="configMessage === '已保存' ? 'text-green-600' : 'text-red-600'"
+            >{{ configMessage }}</span
+          >
+        </div>
+      </section>
     </div>
   </div>
 </template>

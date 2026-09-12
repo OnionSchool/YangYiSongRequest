@@ -22,6 +22,7 @@ export type AuditAction =
   | 'config.calendar'
   | 'config.grades'
   | 'config.words'
+  | 'config.downloads'
   | 'user.create'
   | 'user.update'
   | 'source.login'

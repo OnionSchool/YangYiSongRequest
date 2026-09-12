@@ -1,5 +1,5 @@
 // 管理端接口。错误处理复用 lib/api.ts 的 apiFetch（统一转成 ApiError）。
-import { apiFetch } from './api';
+import { ApiError, apiFetch } from './api';
 import type { RequestStatus, SourceId } from './api';
 
 export type AdminRole = 'SUPER' | 'PLANNER' | 'TECHNICIAN';
@@ -249,6 +249,11 @@ export const saveScheduleRules = (weekly: ScheduleRule[], overrides: ScheduleRul
 
 export const readCredentials = () =>
   apiFetch<{ keyConfigured: boolean; items: CredentialRow[] }>('/api/admin/sources');
+export type DownloadTemplates = Record<SourceId, string>;
+export const readDownloadTemplates = () =>
+  apiFetch<{ templates: DownloadTemplates }>('/api/admin/config/downloads');
+export const saveDownloadTemplates = (templates: DownloadTemplates) =>
+  put<{ templates: DownloadTemplates }>('/api/admin/config/downloads', { templates });
 export const checkSources = () => apiFetch<SourceHealthRow[]>('/api/admin/sources/health');
 export const startNeteaseQr = () =>
   post<{ key: string; qrimg: string }>('/api/admin/sources/netease/qrcode');
@@ -270,9 +275,47 @@ export const patchUser = (
 ) =>
   apiFetch<{ ok: true }>(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 
-// 下载类走浏览器直接跳转（cookie 会自动带上），所以这里只给地址不发请求。
-// 文件名由后端的 Content-Disposition 决定，前端不掺和。
-export const songDownloadUrl = (id: string) => `/api/admin/download/song/${id}`;
-export const dayZipUrl = (date: string, slotId?: string) =>
-  `/api/admin/download/day/${date}${slotId ? `?slotId=${encodeURIComponent(slotId)}` : ''}`;
+function filenameFromDisposition(value: string | null, fallback: string): string {
+  const encoded = value?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (!encoded) return fallback;
+  try {
+    return decodeURIComponent(encoded);
+  } catch {
+    return fallback;
+  }
+}
+
+async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const response = await fetch(path, { credentials: 'same-origin' });
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as {
+      error?: { message?: string };
+      message?: string;
+    } | null;
+    throw new ApiError(
+      'DOWNLOAD_UNAVAILABLE',
+      payload?.error?.message ?? payload?.message ?? '下载失败，请稍后重试',
+      response.status
+    );
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filenameFromDisposition(
+    response.headers.get('content-disposition'),
+    fallbackName
+  );
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export const downloadSong = (id: string) =>
+  downloadFile(`/api/admin/download/song/${id}`, 'audio.mp3');
+export const downloadDayZip = (date: string, slotId?: string) =>
+  downloadFile(
+    `/api/admin/download/day/${date}${slotId ? `?slotId=${encodeURIComponent(slotId)}` : ''}`,
+    `${date}-broadcast.zip`
+  );
 export const dayCsvUrl = (date: string) => `/api/admin/export/day/${date}`;
