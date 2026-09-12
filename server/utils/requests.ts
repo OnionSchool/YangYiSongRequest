@@ -58,7 +58,7 @@ export function normalizeIdentity(
 
 export function assertDailyLimits(ipUsed: number, identityUsed: number | null): void {
   if (ipUsed >= IP_DAILY_LIMIT) {
-    throw tooMany('RATE_LIMIT_IP', `这台设备今天已经点了 ${IP_DAILY_LIMIT} 次，明天再来`, {
+    throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试', {
       limit: IP_DAILY_LIMIT,
       window: 'day',
     });

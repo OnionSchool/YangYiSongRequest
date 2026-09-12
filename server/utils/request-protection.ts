@@ -71,7 +71,7 @@ export function createPowChallenge(
   }
   const count = record?.windowStart === hourStart ? record.count : 0;
   if (count >= REQUESTS_PER_HOUR) {
-    throw tooMany('RATE_LIMIT_IP', '这台设备本小时点歌次数已满，请稍后再试', {
+    throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试', {
       limit: REQUESTS_PER_HOUR,
       window: 'hour',
     });
@@ -172,7 +172,7 @@ export function verifyAndConsumePow(
     const hourStart = now - (now % 3600);
     const used = rate?.windowStart === hourStart ? rate.count : 0;
     if (used >= REQUESTS_PER_HOUR) {
-      throw tooMany('RATE_LIMIT_IP', '这台设备本小时点歌次数已满，请稍后再试');
+      throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试');
     }
     sqlite
       .prepare(
