@@ -5,6 +5,7 @@ import { badRequest, notFound } from '../../../utils/errors';
 import { writeAudit } from '../../../utils/audit';
 import { db } from '../../../utils/db';
 import { metingApi } from '../../../utils/schema';
+import { invalidateMusicSearchCache } from '../../../utils/music-sources';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -15,6 +16,7 @@ export default defineEventHandler(async (event) => {
   const result = await db.delete(metingApi).where(eq(metingApi.id, id));
   if (result.changes === 0) throw notFound('NOT_FOUND', '未找到该 API 配置');
 
+  invalidateMusicSearchCache();
   await writeAudit(session.userId, 'meting.delete', id);
   return { ok: true as const };
 });

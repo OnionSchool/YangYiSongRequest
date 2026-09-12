@@ -38,7 +38,47 @@ export class SourceError extends Error {
 
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 20;
+const SEARCH_CACHE_TTL_MS = 10 * 60_000;
+const SEARCH_CACHE_MAX_ENTRIES = 200;
 const ffprobe = promisify(execFile);
+
+interface CachedSearchPage {
+  expiresAt: number;
+  value: SearchPage;
+}
+
+// A process-local cache intentionally stores only successful, fully mapped pages. This also
+// avoids repeating the URL and ffprobe calls used to obtain missing Meting durations.
+const searchCache = new Map<string, CachedSearchPage>();
+const pendingSearches = new Map<string, Promise<SearchPage>>();
+
+function searchCacheKey(source: SourceId, keyword: string, page: number): string {
+  const normalizedKeyword = keyword
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('zh-CN');
+  return `${source}\u0000${normalizedKeyword}\u0000${page}`;
+}
+
+function copySearchPage(page: SearchPage, keyword: string): SearchPage {
+  return { ...page, keyword, songs: page.songs.map((song) => ({ ...song })) };
+}
+
+function storeSearchPage(key: string, value: SearchPage): void {
+  if (searchCache.has(key)) searchCache.delete(key);
+  searchCache.set(key, { expiresAt: Date.now() + SEARCH_CACHE_TTL_MS, value });
+  while (searchCache.size > SEARCH_CACHE_MAX_ENTRIES) {
+    const oldestKey = searchCache.keys().next().value;
+    if (!oldestKey) break;
+    searchCache.delete(oldestKey);
+  }
+}
+
+/** Clear cached searches after a Meting provider is created, changed, or removed. */
+export function invalidateMusicSearchCache(): void {
+  searchCache.clear();
+}
 
 // ── MetingApi DB types ──────────────────────────────────────────────
 
@@ -269,7 +309,7 @@ async function mapWithConcurrency<T, R>(
 
 // ── Search ──────────────────────────────────────────────────────────
 
-export async function searchSongs(
+async function loadSearchSongs(
   source: SourceId,
   keyword: string,
   page: number
@@ -304,6 +344,31 @@ export async function searchSongs(
       };
     }),
   };
+}
+
+export async function searchSongs(
+  source: SourceId,
+  keyword: string,
+  page: number
+): Promise<SearchPage> {
+  const key = searchCacheKey(source, keyword, page);
+  const cached = searchCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return copySearchPage(cached.value, keyword);
+  if (cached) searchCache.delete(key);
+
+  let pending = pendingSearches.get(key);
+  if (!pending) {
+    pending = loadSearchSongs(source, keyword, page).then((result) => {
+      storeSearchPage(key, result);
+      return result;
+    });
+    pendingSearches.set(key, pending);
+    void pending.then(
+      () => pendingSearches.delete(key),
+      () => pendingSearches.delete(key)
+    );
+  }
+  return copySearchPage(await pending, keyword);
 }
 
 // ── Detail ──────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { badRequest, notFound } from '../../../utils/errors';
 import { writeAudit } from '../../../utils/audit';
 import { db } from '../../../utils/db';
 import { metingApi } from '../../../utils/schema';
-import { listMetingApis } from '../../../utils/music-sources';
+import { invalidateMusicSearchCache, listMetingApis } from '../../../utils/music-sources';
 
 const VALID_PLATFORMS = ['netease', 'qq', 'kugou'];
 
@@ -55,6 +55,7 @@ export default defineEventHandler(async (event) => {
 
   if (Object.keys(updates).length > 0) {
     await db.update(metingApi).set(updates).where(eq(metingApi.id, id));
+    invalidateMusicSearchCache();
   }
 
   await writeAudit(session.userId, 'meting.update', id, updates);

@@ -1,4 +1,4 @@
-import { createError, defineEventHandler, getQuery } from 'h3';
+import { createError, defineEventHandler, getQuery, setHeader } from 'h3';
 import { isSourceId, searchSongs } from '../../utils/music-sources';
 
 export default defineEventHandler(async (event) => {
@@ -24,6 +24,8 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
+    // Keep a short private browser cache; shared server caching protects Meting APIs.
+    setHeader(event, 'Cache-Control', 'private, max-age=60');
     return await searchSongs(source, keyword, page);
   } catch (error) {
     const message = error instanceof Error ? error.message : '未知错误';

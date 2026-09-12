@@ -5,7 +5,7 @@ import { badRequest } from '../../../utils/errors';
 import { writeAudit } from '../../../utils/audit';
 import { db } from '../../../utils/db';
 import { metingApi } from '../../../utils/schema';
-import { listMetingApis } from '../../../utils/music-sources';
+import { invalidateMusicSearchCache, listMetingApis } from '../../../utils/music-sources';
 
 const VALID_PLATFORMS = ['netease', 'qq', 'kugou'];
 
@@ -46,6 +46,7 @@ export default defineEventHandler(async (event) => {
     sortOrder,
   });
 
+  invalidateMusicSearchCache();
   await writeAudit(session.userId, 'meting.create', id, { name, baseUrl });
   return { items: await listMetingApis() };
 });
