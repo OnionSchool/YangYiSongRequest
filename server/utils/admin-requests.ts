@@ -9,7 +9,9 @@ import {
   updateScheduleVersion,
   validateSchedulableDate,
   validateSlotCapacity,
+  isValidDate,
 } from './schedule';
+import { isUniqueViolation, newQueryCode } from './requests';
 
 const PAGE_SIZE = 20;
 
@@ -28,6 +30,7 @@ export async function listAdminRequests(params: ListParams) {
     conditions.push(eq(songRequest.status, params.status));
   }
   if (params.date) {
+    if (!isValidDate(params.date)) throw badRequest('BAD_DATE', '日期格式无效');
     // Filter by date: createdAt >= dayStart AND createdAt < dayEnd
     const dayStart = Math.floor(new Date(params.date + 'T00:00:00+08:00').getTime() / 1000);
     const dayEnd = dayStart + 86400;
@@ -171,6 +174,7 @@ export async function scheduleRequest(
 export async function rejectRequest(requestId: string, reason: string, actorId: string) {
   const req = await db.select().from(songRequest).where(eq(songRequest.id, requestId)).limit(1);
   if (req.length === 0) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
+  if (req[0].status !== 'PENDING') throw badRequest('REQUEST_NOT_PENDING', '该请求不可驳回');
 
   await db
     .update(songRequest)
@@ -255,31 +259,34 @@ export async function manualAddRequest(
   const src = getSource(body.source);
   if (!src) throw badRequest('BAD_SOURCE', '无效音源');
 
-  // Search for song info
-  const results = await src.search(body.platformId, 1);
-  const song =
-    results.songs.find((s: any) => String(s.platformId) === String(body.platformId)) ||
-    results.songs[0];
+  const song = await src.detail(body.platformId);
   if (!song) throw notFound('SONG_NOT_FOUND', '找不到歌曲');
 
   const id = `req_${randomBytes(8).toString('hex')}`;
-  const queryCode = generateCode();
-
-  await db.insert(songRequest).values({
-    id,
-    queryCode,
-    source: song.source,
-    platformId: String(song.platformId),
-    title: song.title,
-    artist: song.artist,
-    album: song.album ?? null,
-    durationMs: song.durationMs,
-    coverUrl: song.coverUrl ?? null,
-    flaggedWords: '[]',
-    isManual: 1,
-    submitIp: 'admin',
-    createdAt: Math.floor(Date.now() / 1000),
-  });
+  let queryCode = '';
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      queryCode = newQueryCode();
+      await db.insert(songRequest).values({
+        id,
+        queryCode,
+        source: song.source,
+        platformId: String(song.platformId),
+        title: song.title,
+        artist: song.artist,
+        album: song.album ?? null,
+        durationMs: song.durationMs,
+        coverUrl: song.coverUrl ?? null,
+        flaggedWords: '[]',
+        isManual: 1,
+        submitIp: 'admin',
+        createdAt: Math.floor(Date.now() / 1000),
+      });
+      break;
+    } catch (error) {
+      if (!isUniqueViolation(error) || attempt === 4) throw error;
+    }
+  }
 
   if (body.playDate && body.slotId) {
     await scheduleRequest(id, body.playDate, body.slotId, actorId);
@@ -290,13 +297,4 @@ export async function manualAddRequest(
     platformId: body.platformId,
   });
   return { id, queryCode };
-}
-
-function generateCode(): string {
-  const chars = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return code;
 }

@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
-import { and, count, eq, gte } from 'drizzle-orm';
-import { db } from './db';
+import { eq } from 'drizzle-orm';
+import { db, sqlite } from './db';
 import { songRequest, schedule, broadcastSlot } from './schema';
 import { GRADE_LABELS, encodeWordList, isGrade, isRequestStatus } from './domain';
 import type { Grade, RequestStatus, SourceId } from './domain';
@@ -26,8 +26,8 @@ export function newQueryCode(): string {
 export const isUniqueViolation = (err: unknown): boolean =>
   typeof err === 'object' &&
   err !== null &&
-  'code' in (err as any) &&
-  err.code === 'SQLITE_CONSTRAINT_UNIQUE';
+  'code' in err &&
+  (err as { code?: unknown }).code === 'SQLITE_CONSTRAINT_UNIQUE';
 
 export function normalizeIdentity(
   input: any,
@@ -102,31 +102,6 @@ export async function submitRequest(
     };
   }
 
-  const since = Math.floor(shanghaiDayStart().getTime() / 1000);
-
-  const ipCountResult = await db
-    .select({ count: count() })
-    .from(songRequest)
-    .where(and(eq(songRequest.submitIp, ip), gte(songRequest.createdAt, since)));
-  const ipUsed = (ipCountResult[0] as any)?.count ?? 0;
-
-  let identityUsed: number | null = null;
-  if (identity) {
-    const identityCountResult = await db
-      .select({ count: count() })
-      .from(songRequest)
-      .where(
-        and(
-          eq(songRequest.grade, identity.grade),
-          eq(songRequest.classNo, identity.classNo),
-          eq(songRequest.requesterName, identity.requesterName),
-          gte(songRequest.createdAt, since)
-        )
-      );
-    identityUsed = (identityCountResult[0] as any)?.count ?? 0;
-  }
-  assertDailyLimits(ipUsed, identityUsed);
-
   const flagged = await findBannedHits(song.title, song.artist, identity?.requesterName);
   if (flagged.length > 0) {
     throw badRequest('CONTENT_BLOCKED', '提交内容不符合规范，请更换后再试');
@@ -135,23 +110,49 @@ export async function submitRequest(
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       const qc = newQueryCode();
-      await db.insert(songRequest).values({
-        id: `req_${crypto.randomUUID().substring(2, 11)}`,
-        queryCode: qc,
-        source: song.source,
-        platformId: song.platformId,
-        title: song.title,
-        artist: song.artist,
-        album: song.album ?? null,
-        durationMs: song.durationMs,
-        coverUrl: song.coverUrl ?? null,
-        grade: identity?.grade ?? null,
-        classNo: identity?.classNo ?? null,
-        requesterName: identity?.requesterName ?? null,
-        flaggedWords: encodeWordList(flagged),
-        submitIp: ip,
-        submitUserAgent: userAgent ?? null,
-      });
+      const since = Math.floor(shanghaiDayStart().getTime() / 1000);
+      sqlite.transaction(() => {
+        const ipUsed = (
+          sqlite
+            .prepare(
+              'SELECT COUNT(*) AS "count" FROM "SongRequest" WHERE "submitIp" = ? AND "createdAt" >= ?'
+            )
+            .get(ip, since) as { count: number }
+        ).count;
+        const identityUsed = identity
+          ? (
+              sqlite
+                .prepare(
+                  'SELECT COUNT(*) AS "count" FROM "SongRequest" WHERE "grade" = ? AND "classNo" = ? AND "requesterName" = ? AND "createdAt" >= ?'
+                )
+                .get(identity.grade, identity.classNo, identity.requesterName, since) as {
+                count: number;
+              }
+            ).count
+          : null;
+        assertDailyLimits(ipUsed, identityUsed);
+        sqlite
+          .prepare(
+            'INSERT INTO "SongRequest" ("id", "queryCode", "source", "platformId", "title", "artist", "album", "durationMs", "coverUrl", "grade", "classNo", "requesterName", "flaggedWords", "submitIp", "submitUserAgent") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+          )
+          .run(
+            `req_${crypto.randomUUID().substring(2, 11)}`,
+            qc,
+            song.source,
+            song.platformId,
+            song.title,
+            song.artist,
+            song.album ?? null,
+            song.durationMs,
+            song.coverUrl ?? null,
+            identity?.grade ?? null,
+            identity?.classNo ?? null,
+            identity?.requesterName ?? null,
+            encodeWordList(flagged),
+            ip,
+            userAgent ?? null
+          );
+      })();
       return { queryCode: qc };
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;

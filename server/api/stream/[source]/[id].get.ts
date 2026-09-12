@@ -1,5 +1,6 @@
 import { createError, defineEventHandler, getRouterParam, setHeader } from 'h3';
 import { fetchAudioUrl, isSourceId } from '../../../utils/music-sources';
+import { fetchExternal } from '../../../utils/external-url';
 
 const TIMEOUT_MS = 15_000;
 
@@ -23,7 +24,7 @@ export default defineEventHandler(async (event) => {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const range = event.node.req.headers.range;
-    const response = await fetch(audioUrl, {
+    const response = await fetchExternal(audioUrl, {
       signal: controller.signal,
       headers: range ? { range } : undefined,
     });

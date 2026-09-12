@@ -1,6 +1,7 @@
 import { defineEventHandler, readBody, setHeader } from 'h3';
 import { requireSuper } from '../../../utils/admin-auth';
 import { badRequest } from '../../../utils/errors';
+import { fetchExternal, validateExternalUrl } from '../../../utils/external-url';
 
 const VALID_PLATFORMS = ['netease', 'qq', 'kugou'] as const;
 const TIMEOUT_MS = 10_000;
@@ -11,17 +12,12 @@ function toMetingServer(source: SourceId): string {
   return source === 'qq' ? 'tencent' : source;
 }
 
-function validateBaseUrl(value: unknown): string {
+async function validateBaseUrl(value: unknown): Promise<string> {
   if (typeof value !== 'string' || !value.trim()) {
     throw badRequest('BAD_URL', '请填写 API 地址');
   }
   const baseUrl = value.trim();
-  try {
-    const url = new URL(baseUrl);
-    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol');
-  } catch {
-    throw badRequest('BAD_URL', 'API 地址必须是 HTTP 或 HTTPS 地址');
-  }
+  await validateExternalUrl(baseUrl);
   return baseUrl.replace(/\/+$/, '');
 }
 
@@ -32,7 +28,7 @@ export default defineEventHandler(async (event) => {
   const body = await readBody<{ baseUrl?: unknown; platforms?: unknown; capabilities?: unknown }>(
     event
   );
-  const baseUrl = validateBaseUrl(body.baseUrl);
+  const baseUrl = await validateBaseUrl(body.baseUrl);
   const platforms = Array.isArray(body.platforms)
     ? body.platforms.filter(
         (platform): platform is SourceId =>
@@ -57,7 +53,9 @@ export default defineEventHandler(async (event) => {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
         try {
-          const response = await fetch(`${baseUrl}?${params}`, { signal: controller.signal });
+          const response = await fetchExternal(`${baseUrl}?${params}`, {
+            signal: controller.signal,
+          });
           const text = await response.text();
           if (!response.ok) {
             return { source, ok: false, detail: `HTTP ${response.status}` };

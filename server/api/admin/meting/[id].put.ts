@@ -11,6 +11,7 @@ import {
   METING_CAPABILITIES,
   type MetingCapability,
 } from '../../../utils/music-sources';
+import { validateExternalUrl } from '../../../utils/external-url';
 
 const VALID_PLATFORMS = ['netease', 'qq', 'kugou'];
 
@@ -42,12 +43,7 @@ export default defineEventHandler(async (event) => {
   if (typeof body.baseUrl === 'string') {
     const baseUrl = body.baseUrl.trim();
     if (!baseUrl) throw badRequest('BAD_URL', '请填写 API 地址');
-    try {
-      const url = new URL(baseUrl);
-      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol');
-    } catch {
-      throw badRequest('BAD_URL', 'API 地址必须是 HTTP 或 HTTPS 地址');
-    }
+    await validateExternalUrl(baseUrl);
     updates.baseUrl = baseUrl;
   }
   if (Array.isArray(body.platforms)) {

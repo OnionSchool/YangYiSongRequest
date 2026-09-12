@@ -1,6 +1,7 @@
 import { createError, defineEventHandler, getQuery, setHeader } from 'h3';
 import { fetchCoverUrl } from '../../utils/music-sources';
 import type { SourceId } from '../../utils/domain';
+import { fetchExternal } from '../../utils/external-url';
 
 const TIMEOUT_MS = 8_000;
 const SOURCE_BY_SERVER: Record<string, SourceId> = {
@@ -28,7 +29,7 @@ export default defineEventHandler(async (event) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const imageRes = await fetch(imageUrl, { signal: controller.signal });
+    const imageRes = await fetchExternal(imageUrl, { signal: controller.signal });
     if (!imageRes.ok || !imageRes.body) {
       throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
     }

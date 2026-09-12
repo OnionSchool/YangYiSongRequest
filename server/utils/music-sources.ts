@@ -4,6 +4,7 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from './db';
 import { metingApi } from './schema';
 import type { SourceId } from './domain';
+import { fetchExternal, validateExternalUrl } from './external-url';
 
 export interface SongSummary {
   source: SourceId;
@@ -184,11 +185,10 @@ interface MetingPicture {
   url?: string;
 }
 
-function validExternalUrl(value: string | null): string | null {
+async function validExternalUrl(value: string | null): Promise<string | null> {
   if (!value) return null;
   try {
-    const url = new URL(value);
-    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+    return (await validateExternalUrl(value)).toString();
   } catch {
     return null;
   }
@@ -228,7 +228,7 @@ async function metingFetchRaw<T>(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(target, { signal: controller.signal });
+    const response = await fetchExternal(target, { signal: controller.signal });
     if (!response.ok) {
       throw new SourceError(source, `Meting API 返回 HTTP ${response.status}`);
     }
@@ -254,11 +254,14 @@ async function metingRedirect(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const response = await fetch(metingRequestUrl(api.baseUrl, source, params), {
+      const response = await fetchExternal(metingRequestUrl(api.baseUrl, source, params), {
         signal: controller.signal,
         redirect: 'manual',
       });
-      const url = validExternalUrl(response.headers.get('location'));
+      const location = response.headers.get('location');
+      const url = location
+        ? await validExternalUrl(new URL(location, response.url).toString())
+        : null;
       if (response.status >= 300 && response.status < 400 && url) return url;
     } catch {
       // Try the next configured API.
@@ -404,13 +407,16 @@ export async function searchSongs(
 
 // ── Detail ──────────────────────────────────────────────────────────
 
-async function fetchDetail(source: SourceId, platformId: string): Promise<SongSummary | null> {
+async function fetchDetail(
+  source: SourceId,
+  requestedPlatformId: string
+): Promise<SongSummary | null> {
   try {
     const songs = await metingFetch<MetingSong[]>(source, 'metadata', {
       type: 'song',
-      id: platformId,
+      id: requestedPlatformId,
     });
-    const song = songs.find((item) => platformId(item) === platformId) ?? songs[0];
+    const song = songs.find((item) => platformId(item) === requestedPlatformId);
     const id = song ? platformId(song) : undefined;
     if (!song || !id) return null;
 
@@ -446,7 +452,7 @@ export async function fetchAudioUrl(source: SourceId, platformId: string): Promi
       id: platformId,
       br: '320',
     });
-    return validExternalUrl(result.url ?? null);
+    return await validExternalUrl(result.url ?? null);
   } catch {
     return null;
   }
@@ -495,7 +501,7 @@ export async function fetchCoverUrl(
       id: picId,
       cover: size,
     });
-    return validExternalUrl(result.url ?? null);
+    return await validExternalUrl(result.url ?? null);
   } catch {
     return null;
   }

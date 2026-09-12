@@ -14,6 +14,7 @@ import { badRequest, notFound } from './errors';
 import { readDownloadTemplates } from './download-config';
 import { fetchAudioUrl } from './music-sources';
 import type { SourceId } from './domain';
+import { fetchExternal, validateExternalUrl } from './external-url';
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'audio-cache');
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -139,7 +140,7 @@ async function resolveDownloadUrl(source: string, platformId: string): Promise<U
   const raw = templates[source as keyof typeof templates];
   if (raw) {
     try {
-      return new URL(raw.replaceAll('{id}', encodeURIComponent(platformId)));
+      return await validateExternalUrl(raw.replaceAll('{id}', encodeURIComponent(platformId)));
     } catch {
       // template invalid, fall through to Meting
     }
@@ -149,7 +150,7 @@ async function resolveDownloadUrl(source: string, platformId: string): Promise<U
   const metingUrl = await fetchAudioUrl(source as SourceId, platformId);
   if (metingUrl) {
     try {
-      return new URL(metingUrl);
+      return await validateExternalUrl(metingUrl);
     } catch {
       // invalid URL from Meting
     }
@@ -166,7 +167,7 @@ async function downloadAudio(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
-    const response = await fetch(target, {
+    const response = await fetchExternal(target, {
       signal: controller.signal,
       headers: { 'user-agent': 'CampusRadio/1.0' },
     });

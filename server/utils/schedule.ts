@@ -28,15 +28,17 @@ function weekday(date: string): number {
   return new Date(`${date}T00:00:00.000Z`).getUTCDay();
 }
 
-function isDate(value: unknown): value is string {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+export function isValidDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
 
 export async function getEffectiveSlots(
   date: string,
   includeDisabled = false
 ): Promise<EffectiveSlot[]> {
-  if (!isDate(date)) throw badRequest('BAD_DATE', '日期格式无效');
+  if (!isValidDate(date)) throw badRequest('BAD_DATE', '日期格式无效');
   const [overrides, overrideDay, hasWeeklyRules] = await Promise.all([
     db
       .select({ slotId: dateScheduleOverride.slotId, sortOrder: dateScheduleOverride.sortOrder })
@@ -88,7 +90,7 @@ export async function getScheduleVersion(date: string): Promise<number> {
 }
 
 export async function validateSchedulableDate(date: string): Promise<void> {
-  if (!isDate(date)) throw badRequest('BAD_DATE', '日期格式无效');
+  if (!isValidDate(date)) throw badRequest('BAD_DATE', '日期格式无效');
   const today = shanghaiDate();
   if (date < today) throw badRequest('PAST_DATE', '不能为过去日期排期');
   const setting = sqlite
