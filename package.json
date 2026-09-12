@@ -18,6 +18,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1131.0",
     "@pinia/nuxt": "^1.0.2",
     "@tailwindcss/postcss": "^4.0.0",
     "@tailwindcss/vite": "4.3.3",
