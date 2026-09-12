@@ -18,8 +18,10 @@ jobs:
       matrix:
         include:
           - platform: linux/amd64
+            architecture: amd64
             runner: ubuntu-latest
           - platform: linux/arm64
+            architecture: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     permissions:
@@ -74,7 +76,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: digest-${{ matrix.platform }}
+          name: digest-${{ matrix.architecture }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
