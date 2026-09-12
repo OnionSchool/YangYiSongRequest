@@ -1,35 +1,28 @@
-# 多阶段构建：生产镜像最小化
 FROM node:24-alpine AS deps
 WORKDIR /app
-# 安装构建原生模块所需的工具（better-sqlite3 / pg）
-RUN apk add --no-cache python3 make g++ git
+
+# better-sqlite3 需要本机构建工具。
+RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
-COPY server/package.json ./server/
-COPY web/package.json ./web/
 RUN npm ci
 
 FROM node:24-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
-# 构建前端 + 后端（已迁移到 Drizzle ORM）
+COPY . ./
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-# 仅复制生产依赖（npm workspaces 已提升到根 node_modules）
-COPY --from=deps /app/node_modules ./node_modules
-# 复制构建产物
-COPY --from=builder /app/web/dist ./web/dist
-COPY --from=builder /app/server/dist ./server/dist
-COPY server/package.json ./server/
-COPY package.json ./
-# 数据库文件在运行时创建（无需复制）
-# 非 root 用户
-RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
-USER nodejs
+
+RUN addgroup -g 1001 -S app && adduser -S app -u 1001 \
+  && mkdir -p /app/data && chown -R app:app /app/data
+COPY --from=builder --chown=app:app /app/.output ./.output
+COPY --from=builder --chown=app:app /app/server/migrations ./server/migrations
+
+USER app
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -qO- http://127.0.0.1:3000/api/health || exit 1
-CMD ["npm", "run", "start:prod", "--workspace", "server"]
+CMD ["node", ".output/server/index.mjs"]

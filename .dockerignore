@@ -1,15 +1,12 @@
 # Dependencies
 node_modules
-server/node_modules
 
 # Build output
-dist
-web/dist
-server/dist
-server/src/generated
+.output
+.nuxt
 
 # Database & secrets
-server/data
+data
 *.db
 *.db-shm
 *.db-wal
@@ -22,12 +19,12 @@ server/data
 .idea
 .vscode
 
-# Docs & tests (可选保留)
+# Docs & tests
 docs
 *.md
 !README.md
-server/src/**/*.test.ts
-server/src/**/*.test.js
+tests
+e2e
 
 # Misc
 .DS_Store
