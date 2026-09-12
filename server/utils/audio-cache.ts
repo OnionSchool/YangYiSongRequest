@@ -6,6 +6,8 @@ import { audioCacheObject, songRequest } from './schema';
 import { eq } from 'drizzle-orm';
 import { badRequest, notFound } from './errors';
 import { readDownloadTemplates } from './download-config';
+import { fetchAudioUrl } from './music-sources';
+import type { SourceId } from './domain';
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'audio-cache');
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -65,24 +67,36 @@ async function readCached(requestId: string, title: string): Promise<CachedAudio
   }
 }
 
-async function requireDownloadUrl(source: string, platformId: string): Promise<URL> {
+async function resolveDownloadUrl(source: string, platformId: string): Promise<URL> {
+  // 1. Try download template first
   const templates = await readDownloadTemplates();
   const raw = templates[source as keyof typeof templates];
-  if (!raw) throw badRequest('DOWNLOAD_UNAVAILABLE', '该音源未配置受控下载地址');
-  let target: URL;
-  try {
-    target = new URL(raw.replaceAll('{id}', encodeURIComponent(platformId)));
-  } catch {
-    throw badRequest('DOWNLOAD_UNAVAILABLE', '音源下载地址配置无效');
+  if (raw) {
+    try {
+      return new URL(raw.replaceAll('{id}', encodeURIComponent(platformId)));
+    } catch {
+      // template invalid, fall through to Meting
+    }
   }
-  return target;
+
+  // 2. Fall back to Meting API
+  const metingUrl = await fetchAudioUrl(source as SourceId, platformId);
+  if (metingUrl) {
+    try {
+      return new URL(metingUrl);
+    } catch {
+      // invalid URL from Meting
+    }
+  }
+
+  throw badRequest('DOWNLOAD_UNAVAILABLE', '该音源无法获取下载地址');
 }
 
 async function downloadAudio(
   source: string,
   platformId: string
 ): Promise<{ body: Buffer; mimeType: string }> {
-  const target = await requireDownloadUrl(source, platformId);
+  const target = await resolveDownloadUrl(source, platformId);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {

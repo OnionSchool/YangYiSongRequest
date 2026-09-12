@@ -168,21 +168,11 @@ export interface CalendarRow {
   note: string | null;
 }
 
-export interface CredentialRow {
-  source: SourceId;
-  hasCookie: boolean;
-  updatedAt: string | null;
-  lastCheckAt: string | null;
-  lastCheckOk: boolean | null;
-  note: string | null;
-}
-
 export interface SourceHealthRow {
   source: SourceId;
   label: string;
   ok: boolean;
   detail: string;
-  hasCredential: boolean;
 }
 
 export interface AdminUserRow {
@@ -251,24 +241,12 @@ export const readScheduleRules = () =>
 export const saveScheduleRules = (weekly: ScheduleRule[], overrides: ScheduleRule[]) =>
   put<{ ok: true }>('/api/admin/config/schedule-rules', { weekly, overrides });
 
-export const readCredentials = () =>
-  apiFetch<{ keyConfigured: boolean; items: CredentialRow[] }>('/api/admin/sources');
 export type DownloadTemplates = Record<SourceId, string>;
 export const readDownloadTemplates = () =>
   apiFetch<{ templates: DownloadTemplates }>('/api/admin/config/downloads');
 export const saveDownloadTemplates = (templates: DownloadTemplates) =>
   put<{ templates: DownloadTemplates }>('/api/admin/config/downloads', { templates });
 export const checkSources = () => apiFetch<SourceHealthRow[]>('/api/admin/sources/health');
-export const startNeteaseQr = () =>
-  post<{ key: string; qrimg: string }>('/api/admin/sources/netease/qrcode');
-export const checkNeteaseQr = (key: string) =>
-  apiFetch<{ status: 'waiting' | 'scanned' | 'expired' | 'ok'; message: string }>(
-    `/api/admin/sources/netease/qrcode/check?key=${encodeURIComponent(key)}`
-  );
-export const saveSourceCookie = (source: SourceId, cookie: string) =>
-  put<unknown>(`/api/admin/sources/${source}/cookie`, { cookie });
-export const clearSourceCookie = (source: SourceId) =>
-  apiFetch<unknown>(`/api/admin/sources/${source}/cookie`, { method: 'DELETE' });
 
 export const readUsers = () => apiFetch<AdminUserRow[]>('/api/admin/users');
 export const createUser = (body: {

@@ -26,23 +26,7 @@ async function load() {
     if (health.status === 'fulfilled') {
       sources.value = health.value;
     } else {
-      sources.value = [
-        {
-          source: 'netease',
-          label: '网易云音乐',
-          ok: true,
-          detail: '搜索可用',
-          hasCredential: false,
-        },
-        {
-          source: 'qq',
-          label: 'QQ 音乐',
-          ok: true,
-          detail: '搜索可用（可能触发限流）',
-          hasCredential: false,
-        },
-        { source: 'kugou', label: '酷狗音乐', ok: true, detail: '搜索可用', hasCredential: false },
-      ];
+      sources.value = [];
     }
     if (downloadConfig.status === 'fulfilled') templates.value = downloadConfig.value.templates;
   } catch {
@@ -82,7 +66,9 @@ onMounted(load);
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-xl font-bold" style="font-family: var(--font-display)">音源状态</h1>
-        <p class="text-sm text-ink-faint mt-0.5">查看搜索可用性，并维护下载地址</p>
+        <p class="text-sm text-ink-faint mt-0.5">
+          通过外部 Meting API 查询音乐平台，检查各音源搜索可用性
+        </p>
       </div>
       <button
         class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-soft hover:border-ink-faint hover:text-ink transition-colors flex items-center gap-1.5 disabled:opacity-50"
@@ -141,11 +127,17 @@ onMounted(load);
         </div>
       </div>
 
+      <div v-if="sources.length === 0" class="paper-card p-8 text-center text-ink-faint">
+        <p>无法获取音源状态</p>
+        <p class="text-sm mt-1">请检查 <code>METING_API_URL</code> 环境变量是否已配置</p>
+      </div>
+
       <section class="paper-card p-5 space-y-4">
         <div>
-          <h2 class="font-medium">下载地址</h2>
+          <h2 class="font-medium">下载地址（可选）</h2>
           <p class="mt-1 text-sm text-ink-faint">
-            每个音源可分别填写下载地址；使用 <code>{id}</code> 会自动替换为歌曲标识。
+            每个音源可分别填写自定义下载地址，使用 <code>{id}</code>
+            替换歌曲标识。若未配置，将自动通过 Meting API 获取。
           </p>
         </div>
         <label v-for="src in sources" :key="src.source" class="block">
@@ -153,7 +145,7 @@ onMounted(load);
           <input
             v-model="templates[src.source]"
             type="text"
-            placeholder="https://audio.example.edu/source/{id}"
+            placeholder="留空则通过 Meting API 获取"
             class="mt-1.5 w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-mono focus:border-ink-faint focus:outline-none"
           />
         </label>
