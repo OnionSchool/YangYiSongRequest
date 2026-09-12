@@ -3,6 +3,8 @@ import { login } from '../../utils/auth';
 import { writeAudit } from '../../utils/audit';
 import { readSite } from '../../utils/site';
 import { getClientIp } from '../../utils/request-ip';
+import { setAuditContext } from '../../utils/audit';
+import { getRequestHeader } from 'h3';
 import { AppError } from '../../utils/errors';
 
 export default defineEventHandler(async (event) => {
@@ -19,6 +21,10 @@ export default defineEventHandler(async (event) => {
   }
 
   const ip = getClientIp(event);
+  setAuditContext({
+    ip,
+    userAgent: getRequestHeader(event, 'user-agent') ?? undefined,
+  });
   let token: string;
   let session: Awaited<ReturnType<typeof login>>['session'];
   try {

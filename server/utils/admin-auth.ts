@@ -1,7 +1,9 @@
-import { createError, getCookie } from 'h3';
+import { createError, getCookie, getRequestHeader } from 'h3';
 import type { H3Event } from 'h3';
 import { verifyToken } from './auth';
 import type { AdminSession } from './auth';
+import { setAuditContext } from './audit';
+import { getClientIp } from './request-ip';
 
 export const isDebugMode = () =>
   process.env.NODE_ENV !== 'production' && process.env.DEBUG_MODE === 'true';
@@ -26,6 +28,10 @@ export function getDebugSession(event: H3Event): AdminSession {
  * In debug mode (DEBUG_MODE=true), returns a fake SUPER session without authentication.
  */
 export function requireAuth(event: H3Event): AdminSession {
+  setAuditContext({
+    ip: getClientIp(event),
+    userAgent: getRequestHeader(event, 'user-agent') ?? undefined,
+  });
   if (isDebugMode()) return getDebugSession(event);
 
   const token = getCookie(event, 'admin_token');
