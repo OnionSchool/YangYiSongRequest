@@ -10,13 +10,18 @@ export function hhmm(date: Date): string {
   }).format(date);
 }
 
-export function dateLabel(date: Date): string {
+export function dateLabel(date: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return '日期未知';
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    return '日期未知';
+  }
   return new Intl.DateTimeFormat('zh-CN', {
     timeZone: TZ,
     month: 'long',
     day: 'numeric',
     weekday: 'long',
-  }).format(date);
+  }).format(parsed);
 }
 
 /** 浏览器本地 YYYY-MM-DD，用于用户侧日期选择与接口参数 */

@@ -2,7 +2,7 @@ import { and, asc, eq, gte } from 'drizzle-orm';
 import { defineEventHandler, setHeader } from 'h3';
 import { db } from '../../utils/db';
 import { schedule, songRequest } from '../../utils/schema';
-import { getEffectiveSlots } from '../../utils/schedule';
+import { getEffectiveSlots, isValidDate } from '../../utils/schedule';
 import { addDays, shanghaiDate } from '../../utils/time';
 
 export default defineEventHandler(async (event) => {
@@ -12,7 +12,12 @@ export default defineEventHandler(async (event) => {
     .from(schedule)
     .where(gte(schedule.playDate, addDays(shanghaiDate(), -1)))
     .orderBy(asc(schedule.playDate));
-  return Promise.all(dates.map(({ date }) => buildPublicDay(date)));
+  return Promise.all(
+    dates
+      .map(({ date }) => date)
+      .filter(isValidDate)
+      .map(buildPublicDay)
+  );
 });
 
 export async function buildPublicDay(date: string) {

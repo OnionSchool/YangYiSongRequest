@@ -19,7 +19,7 @@ const props = defineProps<{
 
 const player = usePlayer();
 
-const heading = computed(() => dateLabel(new Date(`${props.date}T00:00:00+08:00`)));
+const heading = computed(() => dateLabel(props.date));
 const sourceLabel = (id: SourceId) => SOURCES.find((item) => item.id === id)?.label ?? id;
 </script>
 
