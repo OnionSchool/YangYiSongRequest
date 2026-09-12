@@ -9,6 +9,9 @@ export interface AdminMe {
   displayName: string;
   role: AdminRole;
   mustChangePassword: boolean;
+  mustBindEmail: boolean;
+  email: string | null;
+  emailVerified: boolean;
   csrfToken: string;
 }
 

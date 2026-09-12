@@ -55,7 +55,11 @@ const navGroups = computed(() => [
     : []),
   {
     label: '个人',
-    items: [{ to: '/admin/password', icon: '🔑', label: '修改密码' }],
+    items: [
+      { to: '/admin/profile', icon: '👤', label: '个人资料' },
+      { to: '/admin/email', icon: '✉️', label: '邮箱管理' },
+      { to: '/admin/password', icon: '🔑', label: '修改密码' },
+    ],
   },
 ]);
 

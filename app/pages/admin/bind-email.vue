@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useAdmin } from '~/stores/admin';
 import { apiFetch, ApiError } from '~/lib/api';
 
@@ -8,6 +8,7 @@ definePageMeta({ layout: 'admin' });
 
 const admin = useAdmin();
 const router = useRouter();
+const route = useRoute();
 
 const email = ref('');
 const code = ref('');
@@ -74,9 +75,9 @@ async function verify() {
       method: 'POST',
       body: JSON.stringify({ code: code.value.trim() }),
     });
-    // Refresh session to clear mustBindEmail
+    // Refresh session to clear mustBindEmail.
     await admin.checkSession();
-    await router.push('/admin');
+    await router.push(route.query.returnTo === 'email' ? '/admin/email' : '/admin');
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : '验证失败';
   } finally {

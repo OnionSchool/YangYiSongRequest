@@ -8,6 +8,8 @@ export interface AdminUser {
   role: 'SUPER' | 'PLANNER' | 'TECHNICIAN';
   mustChangePassword: boolean;
   mustBindEmail: boolean;
+  email: string | null;
+  emailVerified: boolean;
   csrfToken: string;
   debugMode?: boolean;
 }
