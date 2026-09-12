@@ -71,7 +71,8 @@ async function doReject() {
 async function loadScheduleSlots() {
   scheduleLoading.value = true;
   try {
-    scheduleSlots.value = await readDay(scheduleDate.value);
+    const day = await readDay(scheduleDate.value);
+    scheduleSlots.value = day.slots;
     scheduleSlotId.value = scheduleSlots.value[0]?.slotId ?? '';
   } catch (e: any) {
     error.value = e.message ?? '加载播出时段失败';
