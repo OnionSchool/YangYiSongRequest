@@ -233,6 +233,23 @@ function formatArtist(artist: string[] | string | undefined): string {
   return String(artist) || '未知歌手';
 }
 
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  mapper: (value: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (next < values.length) {
+      const index = next++;
+      results[index] = await mapper(values[index]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker));
+  return results;
+}
+
 // ── Search ──────────────────────────────────────────────────────────
 
 export async function searchSongs(
@@ -256,16 +273,19 @@ export async function searchSongs(
     page,
     pageSize: PAGE_SIZE,
     total,
-    songs: slice.map((song) => ({
-      source,
-      platformId: platformId(song) as string,
-      title: song.name ?? song.title ?? '',
-      artist: formatArtist(song.artist),
-      album: song.album || undefined,
-      durationMs: 0,
-      coverUrl: songCoverUrl(source, song),
-      vip: false,
-    })),
+    songs: await mapWithConcurrency(slice, 4, async (song) => {
+      const id = platformId(song) as string;
+      return {
+        source,
+        platformId: id,
+        title: song.name ?? song.title ?? '',
+        artist: formatArtist(song.artist),
+        album: song.album || undefined,
+        durationMs: await detectAudioDurationMs(source, id),
+        coverUrl: songCoverUrl(source, song),
+        vip: false,
+      };
+    }),
   };
 }
 
