@@ -128,6 +128,21 @@ function validExternalUrl(value: string | null): string | null {
   }
 }
 
+function assertUsableMetingResponse(
+  source: SourceId,
+  params: Record<string, string>,
+  data: unknown
+): void {
+  if (typeof data === 'object' && data !== null && !Array.isArray(data) && 'error' in data) {
+    const error = (data as { error?: unknown }).error;
+    throw new SourceError(source, `Meting API 业务错误：${String(error ?? 'unknown')}`);
+  }
+  if (params.type === 'search') {
+    if (!Array.isArray(data)) throw new SourceError(source, 'Meting API 未返回歌曲列表');
+    if (data.length === 0) throw new SourceError(source, 'Meting API 未返回搜索结果');
+  }
+}
+
 function metingRequestUrl(
   baseUrl: string,
   source: SourceId,
@@ -151,7 +166,9 @@ async function metingFetchRaw<T>(
     if (!response.ok) {
       throw new SourceError(source, `Meting API 返回 HTTP ${response.status}`);
     }
-    return (await response.json()) as T;
+    const data = (await response.json()) as unknown;
+    assertUsableMetingResponse(source, params, data);
+    return data as T;
   } catch (error) {
     if (error instanceof SourceError) throw error;
     const message = error instanceof Error ? error.message : '请求 Meting API 失败';
