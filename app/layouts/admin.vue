@@ -6,7 +6,7 @@
     <AdminNav />
 
     <!-- Main content area -->
-    <div class="flex-1 min-w-0 flex flex-col">
+    <div class="flex-1 min-w-0 flex h-screen flex-col overflow-hidden">
       <header class="sticky top-0 z-30 border-b border-rule bg-paper/95 backdrop-blur-sm">
         <div class="flex h-12 items-center px-4 lg:px-6">
           <div class="lg:hidden shrink-0">
@@ -37,7 +37,7 @@
       </header>
 
       <!-- Page content -->
-      <main class="flex-1 px-4 py-6 pb-20 lg:px-6 lg:pb-6">
+      <main class="flex-1 overflow-y-auto px-4 py-6 pb-20 lg:px-6 lg:pb-6">
         <div class="mx-auto max-w-5xl">
           <slot />
         </div>

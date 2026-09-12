@@ -96,7 +96,7 @@ async function switchDebugRole(role: 'SUPER' | 'PLANNER' | 'TECHNICIAN') {
 
 <template>
   <!-- ========== Desktop sidebar ========== -->
-  <aside class="hidden lg:flex flex-col w-56 shrink-0">
+  <aside class="hidden lg:sticky lg:top-0 lg:flex h-screen w-56 shrink-0 flex-col">
     <div class="px-4 pt-5 pb-4">
       <p class="eyebrow tracking-widest">广播台</p>
       <h2 class="text-lg font-bold mt-0.5" style="font-family: var(--font-display)">管理后台</h2>
