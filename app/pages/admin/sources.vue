@@ -7,6 +7,7 @@ import {
   readDownloadTemplates,
   readMetingApis,
   saveDownloadTemplates,
+  testMetingApi,
   updateMetingApi,
   type DownloadTemplates,
   type MetingApiRow,
@@ -21,6 +22,8 @@ const apis = ref<MetingApiRow[]>([]);
 const loading = ref(false);
 const checking = ref(false);
 const saving = ref(false);
+const testing = ref(false);
+const testResults = ref<Array<{ source: SourceId; ok: boolean; detail: string }> | null>(null);
 const templates = ref<DownloadTemplates>({ netease: '', qq: '', kugou: '' });
 const configMessage = ref<string | null>(null);
 const apiMessage = ref<string | null>(null);
@@ -76,6 +79,32 @@ function togglePlatform(platform: SourceId) {
   newApi.value.platforms = platforms.includes(platform)
     ? platforms.filter((item) => item !== platform)
     : [...platforms, platform];
+}
+
+async function testApi() {
+  apiMessage.value = null;
+  testResults.value = null;
+  if (!newApi.value.baseUrl.trim()) {
+    apiMessage.value = '请先填写 API 地址';
+    return;
+  }
+  if (newApi.value.platforms.length === 0) {
+    apiMessage.value = '至少选择一个支持的平台';
+    return;
+  }
+  testing.value = true;
+  try {
+    testResults.value = (
+      await testMetingApi({
+        baseUrl: newApi.value.baseUrl.trim(),
+        platforms: newApi.value.platforms,
+      })
+    ).results;
+  } catch (error: any) {
+    apiMessage.value = error.message ?? '测试失败';
+  } finally {
+    testing.value = false;
+  }
 }
 
 async function saveApi() {
@@ -226,6 +255,13 @@ onMounted(load);
             {{ saving ? '保存中…' : '保存 API' }}
           </button>
           <button
+            class="rounded-lg border border-rule px-4 py-2 text-sm disabled:opacity-50"
+            :disabled="testing"
+            @click="testApi"
+          >
+            {{ testing ? '测试中…' : '测试 API' }}
+          </button>
+          <button
             v-if="editingId"
             class="rounded-lg border border-rule px-4 py-2 text-sm"
             @click="resetApiForm"
@@ -238,6 +274,21 @@ onMounted(load);
             :class="apiMessage === '已保存' ? 'text-green-600' : 'text-red-600'"
             >{{ apiMessage }}</span
           >
+        </div>
+        <div v-if="testResults" class="divide-y divide-rule rounded-lg border border-rule text-sm">
+          <div
+            v-for="result in testResults"
+            :key="result.source"
+            class="flex items-center gap-3 px-3 py-2"
+          >
+            <span class="font-medium">{{
+              platformOptions.find((item) => item.id === result.source)?.label
+            }}</span>
+            <span class="ml-auto" :class="result.ok ? 'text-green-700' : 'text-red-600'">{{
+              result.ok ? '正常' : '异常'
+            }}</span>
+            <span class="text-ink-faint">{{ result.detail }}</span>
+          </div>
         </div>
       </section>
 

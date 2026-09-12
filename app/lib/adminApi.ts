@@ -263,6 +263,11 @@ export const updateMetingApi = (id: string, body: Partial<Omit<MetingApiRow, 'id
   put<{ items: MetingApiRow[] }>(`/api/admin/meting/${encodeURIComponent(id)}`, body);
 export const deleteMetingApi = (id: string) =>
   apiFetch<{ ok: true }>(`/api/admin/meting/${encodeURIComponent(id)}`, { method: 'DELETE' });
+export const testMetingApi = (body: { baseUrl: string; platforms: SourceId[] }) =>
+  post<{ results: Array<{ source: SourceId; ok: boolean; detail: string }> }>(
+    '/api/admin/meting/test',
+    body
+  );
 
 export const readUsers = () => apiFetch<AdminUserRow[]>('/api/admin/users');
 export const createUser = (body: {
