@@ -204,6 +204,7 @@ export const metingApi = table('MetingApi', {
   name: text('name').notNull(),
   baseUrl: text('baseUrl').notNull(),
   platforms: text('platforms').notNull().default('["netease","qq","kugou"]'),
+  capabilities: text('capabilities').notNull().default('["search","metadata","download"]'),
   enabled: integer('enabled').notNull().default(1),
   sortOrder: integer('sortOrder').notNull().default(0),
   createdAt: integer('createdAt')

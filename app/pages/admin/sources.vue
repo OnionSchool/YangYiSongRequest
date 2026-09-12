@@ -11,6 +11,7 @@ import {
   updateMetingApi,
   type DownloadTemplates,
   type MetingApiRow,
+  type MetingCapability,
   type SourceHealthRow,
 } from '~/lib/adminApi';
 import type { SourceId } from '~/lib/api';
@@ -32,6 +33,7 @@ const newApi = ref({
   name: '',
   baseUrl: '',
   platforms: ['netease', 'qq', 'kugou'] as SourceId[],
+  capabilities: ['search', 'metadata', 'download'] as MetingCapability[],
   enabled: true,
   sortOrder: 0,
 });
@@ -42,6 +44,11 @@ const platformOptions: Array<{ id: SourceId; label: string }> = [
   { id: 'kugou', label: '酷狗音乐' },
 ];
 const sourceIcons: Record<string, string> = { netease: '🎵', qq: '🎧', kugou: '🎤' };
+const capabilityOptions: Array<{ id: MetingCapability; label: string; description: string }> = [
+  { id: 'search', label: '搜索歌曲', description: '用于学生和后台搜索歌曲' },
+  { id: 'metadata', label: '获取元数据', description: '用于封面和歌曲详情' },
+  { id: 'download', label: '获取音频', description: '用于试听、时长检测和下载' },
+];
 const apiFormTitle = computed(() => (editingId.value ? '编辑 Meting API' : '添加 Meting API'));
 
 async function load() {
@@ -63,6 +70,7 @@ function resetApiForm() {
     name: '',
     baseUrl: '',
     platforms: ['netease', 'qq', 'kugou'],
+    capabilities: ['search', 'metadata', 'download'],
     enabled: true,
     sortOrder: 0,
   };
@@ -81,6 +89,13 @@ function togglePlatform(platform: SourceId) {
     : [...platforms, platform];
 }
 
+function toggleCapability(capability: MetingCapability) {
+  const capabilities = newApi.value.capabilities;
+  newApi.value.capabilities = capabilities.includes(capability)
+    ? capabilities.filter((item) => item !== capability)
+    : [...capabilities, capability];
+}
+
 async function testApi() {
   apiMessage.value = null;
   testResults.value = null;
@@ -92,12 +107,17 @@ async function testApi() {
     apiMessage.value = '至少选择一个支持的平台';
     return;
   }
+  if (!newApi.value.capabilities.includes('search')) {
+    apiMessage.value = '测试 API 需要启用“搜索歌曲”功能';
+    return;
+  }
   testing.value = true;
   try {
     testResults.value = (
       await testMetingApi({
         baseUrl: newApi.value.baseUrl.trim(),
         platforms: newApi.value.platforms,
+        capabilities: newApi.value.capabilities,
       })
     ).results;
   } catch (error: any) {
@@ -115,6 +135,10 @@ async function saveApi() {
   }
   if (newApi.value.platforms.length === 0) {
     apiMessage.value = '至少选择一个支持的平台';
+    return;
+  }
+  if (newApi.value.capabilities.length === 0) {
+    apiMessage.value = '至少选择一个 API 功能';
     return;
   }
   saving.value = true;
@@ -242,6 +266,29 @@ onMounted(load);
             </label>
           </div>
         </fieldset>
+        <fieldset>
+          <legend class="text-sm font-medium">启用功能</legend>
+          <p class="mt-1 text-sm text-ink-faint">
+            可同时开启多个功能。未开启的功能不会使用此 API，也不会参与该功能的故障切换。
+          </p>
+          <div class="mt-2 grid gap-2 sm:grid-cols-3">
+            <label
+              v-for="capability in capabilityOptions"
+              :key="capability.id"
+              class="rounded-lg border border-rule px-3 py-2 text-sm"
+            >
+              <span class="flex items-center gap-2 font-medium">
+                <input
+                  type="checkbox"
+                  :checked="newApi.capabilities.includes(capability.id)"
+                  @change="toggleCapability(capability.id)"
+                />
+                {{ capability.label }}
+              </span>
+              <span class="mt-1 block text-xs text-ink-faint">{{ capability.description }}</span>
+            </label>
+          </div>
+        </fieldset>
         <label class="flex items-center gap-2 text-sm">
           <input v-model="newApi.enabled" type="checkbox" />
           启用此 API
@@ -313,9 +360,16 @@ onMounted(load);
             </div>
             <p class="mt-1 truncate font-mono text-sm text-ink-faint">{{ api.baseUrl }}</p>
             <p class="mt-2 text-sm text-ink-soft">
-              支持：{{
+              平台：{{
                 api.platforms
                   .map((id) => platformOptions.find((item) => item.id === id)?.label ?? id)
+                  .join('、')
+              }}
+            </p>
+            <p class="mt-1 text-sm text-ink-soft">
+              功能：{{
+                api.capabilities
+                  .map((id) => capabilityOptions.find((item) => item.id === id)?.label ?? id)
                   .join('、')
               }}
             </p>

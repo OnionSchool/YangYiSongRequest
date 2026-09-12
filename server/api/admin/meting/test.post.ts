@@ -29,7 +29,9 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
   requireSuper(event);
 
-  const body = await readBody<{ baseUrl?: unknown; platforms?: unknown }>(event);
+  const body = await readBody<{ baseUrl?: unknown; platforms?: unknown; capabilities?: unknown }>(
+    event
+  );
   const baseUrl = validateBaseUrl(body.baseUrl);
   const platforms = Array.isArray(body.platforms)
     ? body.platforms.filter(
@@ -38,6 +40,9 @@ export default defineEventHandler(async (event) => {
       )
     : [];
   if (platforms.length === 0) throw badRequest('BAD_PLATFORMS', '至少选择一个支持的平台');
+  if (Array.isArray(body.capabilities) && !body.capabilities.includes('search')) {
+    throw badRequest('SEARCH_DISABLED', '测试 API 需要启用“搜索歌曲”功能');
+  }
 
   return {
     results: await Promise.all(

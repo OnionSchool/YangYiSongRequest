@@ -82,17 +82,41 @@ export function invalidateMusicSearchCache(): void {
 
 // ── MetingApi DB types ──────────────────────────────────────────────
 
+export const METING_CAPABILITIES = ['search', 'metadata', 'download'] as const;
+export type MetingCapability = (typeof METING_CAPABILITIES)[number];
+
 export interface MetingApiConfig {
   id: string;
   name: string;
   baseUrl: string;
   platforms: SourceId[];
+  capabilities: MetingCapability[];
   enabled: boolean;
   sortOrder: number;
 }
 
-/** Read all enabled Meting APIs supporting a given source, ordered by sortOrder */
-async function getApisForSource(source: SourceId): Promise<MetingApiConfig[]> {
+function parseCapabilities(value: string | null | undefined): MetingCapability[] {
+  try {
+    const capabilities = JSON.parse(value ?? '') as unknown;
+    if (Array.isArray(capabilities)) {
+      const valid = capabilities.filter(
+        (capability): capability is MetingCapability =>
+          typeof capability === 'string' &&
+          METING_CAPABILITIES.includes(capability as MetingCapability)
+      );
+      if (valid.length > 0) return [...new Set(valid)];
+    }
+  } catch {
+    // Existing configurations created before capabilities were added use all features.
+  }
+  return [...METING_CAPABILITIES];
+}
+
+/** Read enabled Meting APIs for a platform and capability, ordered by priority. */
+async function getApisForSource(
+  source: SourceId,
+  capability: MetingCapability
+): Promise<MetingApiConfig[]> {
   const rows = await db
     .select()
     .from(metingApi)
@@ -105,10 +129,11 @@ async function getApisForSource(source: SourceId): Promise<MetingApiConfig[]> {
       name: row.name,
       baseUrl: row.baseUrl,
       platforms: JSON.parse(row.platforms) as SourceId[],
+      capabilities: parseCapabilities(row.capabilities),
       enabled: true,
       sortOrder: row.sortOrder,
     }))
-    .filter((api) => api.platforms.includes(source));
+    .filter((api) => api.platforms.includes(source) && api.capabilities.includes(capability));
 }
 
 /** Read all Meting API configs (for admin) */
@@ -123,6 +148,7 @@ export async function listMetingApis(): Promise<MetingApiConfig[]> {
     name: row.name,
     baseUrl: row.baseUrl,
     platforms: JSON.parse(row.platforms) as SourceId[],
+    capabilities: parseCapabilities(row.capabilities),
     enabled: row.enabled === 1,
     sortOrder: row.sortOrder,
   }));
@@ -220,9 +246,10 @@ async function metingFetchRaw<T>(
 
 async function metingRedirect(
   source: SourceId,
+  capability: MetingCapability,
   params: Record<string, string>
 ): Promise<string | null> {
-  const apis = await getApisForSource(source);
+  const apis = await getApisForSource(source, capability);
   for (const api of apis) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -243,10 +270,14 @@ async function metingRedirect(
 }
 
 /** Try each configured API in order; throw if all fail */
-async function metingFetch<T>(source: SourceId, params: Record<string, string>): Promise<T> {
-  const apis = await getApisForSource(source);
+async function metingFetch<T>(
+  source: SourceId,
+  capability: MetingCapability,
+  params: Record<string, string>
+): Promise<T> {
+  const apis = await getApisForSource(source, capability);
   if (apis.length === 0) {
-    throw new SourceError(source, '未配置支持该平台的 Meting API');
+    throw new SourceError(source, `未配置支持该平台“${capability}”功能的 Meting API`);
   }
   let lastError: unknown;
   for (const api of apis) {
@@ -314,7 +345,7 @@ async function loadSearchSongs(
   keyword: string,
   page: number
 ): Promise<SearchPage> {
-  const songs = await metingFetch<MetingSong[]>(source, {
+  const songs = await metingFetch<MetingSong[]>(source, 'search', {
     type: 'search',
     id: keyword,
   });
@@ -375,7 +406,7 @@ export async function searchSongs(
 
 async function fetchDetail(source: SourceId, platformId: string): Promise<SongSummary | null> {
   try {
-    const songs = await metingFetch<MetingSong[]>(source, {
+    const songs = await metingFetch<MetingSong[]>(source, 'metadata', {
       type: 'song',
       id: platformId,
     });
@@ -401,12 +432,16 @@ async function fetchDetail(source: SourceId, platformId: string): Promise<SongSu
 // ── Audio URL ───────────────────────────────────────────────────────
 
 export async function fetchAudioUrl(source: SourceId, platformId: string): Promise<string | null> {
-  const redirectUrl = await metingRedirect(source, { type: 'url', id: platformId, br: '320' });
+  const redirectUrl = await metingRedirect(source, 'download', {
+    type: 'url',
+    id: platformId,
+    br: '320',
+  });
   if (redirectUrl) return redirectUrl;
 
   // Also accept Meting variants that return a JSON URL rather than a 302 redirect.
   try {
-    const result = await metingFetch<MetingUrl>(source, {
+    const result = await metingFetch<MetingUrl>(source, 'download', {
       type: 'url',
       id: platformId,
       br: '320',
@@ -447,11 +482,15 @@ export async function fetchCoverUrl(
   picId: string,
   size = '300'
 ): Promise<string | null> {
-  const redirectUrl = await metingRedirect(source, { type: 'pic', id: picId, cover: size });
+  const redirectUrl = await metingRedirect(source, 'metadata', {
+    type: 'pic',
+    id: picId,
+    cover: size,
+  });
   if (redirectUrl) return redirectUrl;
 
   try {
-    const result = await metingFetch<MetingPicture>(source, {
+    const result = await metingFetch<MetingPicture>(source, 'metadata', {
       type: 'pic',
       id: picId,
       cover: size,

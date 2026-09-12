@@ -214,11 +214,14 @@ export interface SourceHealthRow {
   detail: string;
 }
 
+export type MetingCapability = 'search' | 'metadata' | 'download';
+
 export interface MetingApiRow {
   id: string;
   name: string;
   baseUrl: string;
   platforms: SourceId[];
+  capabilities: MetingCapability[];
   enabled: boolean;
   sortOrder: number;
 }
@@ -302,7 +305,11 @@ export const updateMetingApi = (id: string, body: Partial<Omit<MetingApiRow, 'id
   put<{ items: MetingApiRow[] }>(`/api/admin/meting/${encodeURIComponent(id)}`, body);
 export const deleteMetingApi = (id: string) =>
   apiFetch<{ ok: true }>(`/api/admin/meting/${encodeURIComponent(id)}`, { method: 'DELETE' });
-export const testMetingApi = (body: { baseUrl: string; platforms: SourceId[] }) =>
+export const testMetingApi = (body: {
+  baseUrl: string;
+  platforms: SourceId[];
+  capabilities: MetingCapability[];
+}) =>
   post<{ results: Array<{ source: SourceId; ok: boolean; detail: string }> }>(
     '/api/admin/meting/test',
     body

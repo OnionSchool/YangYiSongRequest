@@ -5,9 +5,22 @@ import { badRequest, notFound } from '../../../utils/errors';
 import { writeAudit } from '../../../utils/audit';
 import { db } from '../../../utils/db';
 import { metingApi } from '../../../utils/schema';
-import { invalidateMusicSearchCache, listMetingApis } from '../../../utils/music-sources';
+import {
+  invalidateMusicSearchCache,
+  listMetingApis,
+  METING_CAPABILITIES,
+  type MetingCapability,
+} from '../../../utils/music-sources';
 
 const VALID_PLATFORMS = ['netease', 'qq', 'kugou'];
+
+function validCapabilities(value: unknown): MetingCapability[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value)].filter(
+    (capability): capability is MetingCapability =>
+      typeof capability === 'string' && METING_CAPABILITIES.includes(capability as MetingCapability)
+  );
+}
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -45,6 +58,13 @@ export default defineEventHandler(async (event) => {
       throw badRequest('BAD_PLATFORMS', '至少选择一个支持的平台');
     }
     updates.platforms = JSON.stringify(validPlatforms);
+  }
+  if (Array.isArray(body.capabilities)) {
+    const capabilities = validCapabilities(body.capabilities);
+    if (capabilities.length === 0) {
+      throw badRequest('BAD_CAPABILITIES', '至少选择一个 API 功能');
+    }
+    updates.capabilities = JSON.stringify(capabilities);
   }
   if (typeof body.enabled === 'boolean') {
     updates.enabled = body.enabled ? 1 : 0;
