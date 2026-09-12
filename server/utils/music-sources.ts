@@ -94,24 +94,35 @@ function toMetingServer(source: SourceId): string {
 }
 
 interface MetingSong {
-  id: string;
-  name: string;
-  artist: string[] | string;
-  album: string;
-  pic_id: string;
-  url_id: string;
-  lyric_id: string;
-  source: string;
+  id?: string | number;
+  name?: string;
+  title?: string;
+  artist?: string[] | string;
+  album?: string;
+  pic_id?: string | number;
+  pic?: string;
+  url_id?: string | number;
+  url?: string;
+  lyric_id?: string | number;
+  source?: string;
 }
 
 interface MetingUrl {
-  url: string;
-  size: number;
-  br: number;
+  url?: string;
 }
 
 interface MetingPicture {
-  url: string;
+  url?: string;
+}
+
+function metingRequestUrl(
+  baseUrl: string,
+  source: SourceId,
+  params: Record<string, string>
+): string {
+  const base = baseUrl.replace(/\/+$/, '');
+  const query = new URLSearchParams({ server: toMetingServer(source), ...params });
+  return `${base}?${query}`;
 }
 
 async function metingFetchRaw<T>(
@@ -119,15 +130,11 @@ async function metingFetchRaw<T>(
   source: SourceId,
   params: Record<string, string>
 ): Promise<T> {
-  const base = baseUrl.replace(/\/+$/, '');
-  const query = new URLSearchParams({
-    server: toMetingServer(source),
-    ...params,
-  });
+  const target = metingRequestUrl(baseUrl, source, params);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(`${base}?${query}`, { signal: controller.signal });
+    const response = await fetch(target, { signal: controller.signal });
     if (!response.ok) {
       throw new SourceError(source, `Meting API 返回 HTTP ${response.status}`);
     }
@@ -165,7 +172,26 @@ function coverProxyUrl(source: SourceId, picId: string): string {
   return `/api/cover/meting?server=${toMetingServer(source)}&id=${encodeURIComponent(picId)}`;
 }
 
-function formatArtist(artist: string[] | string): string {
+function idFromMetingUrl(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value).searchParams.get('id') || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function platformId(song: MetingSong): string | undefined {
+  const id = song.id ?? song.url_id ?? idFromMetingUrl(song.url);
+  return id == null ? undefined : String(id);
+}
+
+function songCoverUrl(source: SourceId, song: MetingSong): string | undefined {
+  if (song.pic?.startsWith('http://') || song.pic?.startsWith('https://')) return song.pic;
+  return song.pic_id == null ? undefined : coverProxyUrl(source, String(song.pic_id));
+}
+
+function formatArtist(artist: string[] | string | undefined): string {
   if (Array.isArray(artist)) return artist.join(' / ') || '未知歌手';
   return String(artist) || '未知歌手';
 }
@@ -182,9 +208,10 @@ export async function searchSongs(
     id: keyword,
   });
 
-  const total = songs.length;
+  const validSongs = songs.filter((song) => Boolean(platformId(song)));
+  const total = validSongs.length;
   const start = (page - 1) * PAGE_SIZE;
-  const slice = songs.slice(start, start + PAGE_SIZE);
+  const slice = validSongs.slice(start, start + PAGE_SIZE);
 
   return {
     source,
@@ -194,12 +221,12 @@ export async function searchSongs(
     total,
     songs: slice.map((song) => ({
       source,
-      platformId: song.id,
-      title: song.name,
+      platformId: platformId(song) as string,
+      title: song.name ?? song.title ?? '',
       artist: formatArtist(song.artist),
       album: song.album || undefined,
       durationMs: 0,
-      coverUrl: song.pic_id ? coverProxyUrl(source, song.pic_id) : undefined,
+      coverUrl: songCoverUrl(source, song),
       vip: false,
     })),
   };
@@ -213,17 +240,18 @@ async function fetchDetail(source: SourceId, platformId: string): Promise<SongSu
       type: 'song',
       id: platformId,
     });
-    if (!songs.length) return null;
-    const song = songs[0];
+    const song = songs.find((item) => platformId(item) === platformId) ?? songs[0];
+    const id = song ? platformId(song) : undefined;
+    if (!song || !id) return null;
 
     return {
       source,
-      platformId: song.id,
-      title: song.name,
+      platformId: id,
+      title: song.name ?? song.title ?? '',
       artist: formatArtist(song.artist),
       album: song.album || undefined,
       durationMs: 0,
-      coverUrl: song.pic_id ? coverProxyUrl(source, song.pic_id) : undefined,
+      coverUrl: songCoverUrl(source, song),
       vip: false,
     };
   } catch {
