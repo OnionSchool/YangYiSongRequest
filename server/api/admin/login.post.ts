@@ -3,6 +3,7 @@ import { login } from '../../utils/auth';
 import { writeAudit } from '../../utils/audit';
 import { readSite } from '../../utils/site';
 import { getClientIp } from '../../utils/request-ip';
+import { AppError } from '../../utils/errors';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -18,7 +19,21 @@ export default defineEventHandler(async (event) => {
   }
 
   const ip = getClientIp(event);
-  const { token, session } = await login(username, password, ip);
+  let token: string;
+  let session: Awaited<ReturnType<typeof login>>['session'];
+  try {
+    ({ token, session } = await login(username, password, ip));
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw createError({
+        statusCode: error.statusCode,
+        statusMessage: 'Bad Request',
+        message: error.message,
+        data: { code: error.code, detail: error.detail },
+      });
+    }
+    throw error;
+  }
 
   setCookie(event, 'admin_token', token, {
     maxAge: 7 * 24 * 60 * 60, // 7 days
