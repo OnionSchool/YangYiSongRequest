@@ -1,3 +1,6 @@
+import { asc, eq } from 'drizzle-orm';
+import { db } from './db';
+import { metingApi } from './schema';
 import type { SourceId } from './domain';
 
 export interface SongSummary {
@@ -34,13 +37,55 @@ export class SourceError extends Error {
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 20;
 
-// ── Meting API ──────────────────────────────────────────────────────
+// ── MetingApi DB types ──────────────────────────────────────────────
 
-function getMetingApiUrl(): string {
-  const url = process.env.METING_API_URL;
-  if (!url) throw new Error('未配置 METING_API_URL 环境变量');
-  return url.replace(/\/+$/, '');
+export interface MetingApiConfig {
+  id: string;
+  name: string;
+  baseUrl: string;
+  platforms: SourceId[];
+  enabled: boolean;
+  sortOrder: number;
 }
+
+/** Read all enabled Meting APIs supporting a given source, ordered by sortOrder */
+async function getApisForSource(source: SourceId): Promise<MetingApiConfig[]> {
+  const rows = await db
+    .select()
+    .from(metingApi)
+    .where(eq(metingApi.enabled, 1))
+    .orderBy(asc(metingApi.sortOrder), asc(metingApi.createdAt));
+
+  return rows
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      baseUrl: row.baseUrl,
+      platforms: JSON.parse(row.platforms) as SourceId[],
+      enabled: true,
+      sortOrder: row.sortOrder,
+    }))
+    .filter((api) => api.platforms.includes(source));
+}
+
+/** Read all Meting API configs (for admin) */
+export async function listMetingApis(): Promise<MetingApiConfig[]> {
+  const rows = await db
+    .select()
+    .from(metingApi)
+    .orderBy(asc(metingApi.sortOrder), asc(metingApi.createdAt));
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    baseUrl: row.baseUrl,
+    platforms: JSON.parse(row.platforms) as SourceId[],
+    enabled: row.enabled === 1,
+    sortOrder: row.sortOrder,
+  }));
+}
+
+// ── Meting HTTP ─────────────────────────────────────────────────────
 
 /** Map internal source id to Meting server name */
 function toMetingServer(source: SourceId): string {
@@ -51,7 +96,7 @@ function toMetingServer(source: SourceId): string {
 interface MetingSong {
   id: string;
   name: string;
-  artist: string[];
+  artist: string[] | string;
   album: string;
   pic_id: string;
   url_id: string;
@@ -65,8 +110,16 @@ interface MetingUrl {
   br: number;
 }
 
-async function metingFetch<T>(source: SourceId, params: Record<string, string>): Promise<T> {
-  const base = getMetingApiUrl();
+interface MetingPicture {
+  url: string;
+}
+
+async function metingFetchRaw<T>(
+  baseUrl: string,
+  source: SourceId,
+  params: Record<string, string>
+): Promise<T> {
+  const base = baseUrl.replace(/\/+$/, '');
   const query = new URLSearchParams({
     server: toMetingServer(source),
     ...params,
@@ -88,7 +141,26 @@ async function metingFetch<T>(source: SourceId, params: Record<string, string>):
   }
 }
 
-/** Build a cover proxy URL so the frontend can lazily load cover images */
+/** Try each configured API in order; throw if all fail */
+async function metingFetch<T>(source: SourceId, params: Record<string, string>): Promise<T> {
+  const apis = await getApisForSource(source);
+  if (apis.length === 0) {
+    throw new SourceError(source, '未配置支持该平台的 Meting API');
+  }
+  let lastError: unknown;
+  for (const api of apis) {
+    try {
+      return await metingFetchRaw<T>(api.baseUrl, source, params);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof SourceError
+    ? lastError
+    : new SourceError(source, '所有 Meting API 均不可用', lastError);
+}
+
+/** Build a cover proxy URL */
 function coverProxyUrl(source: SourceId, picId: string): string {
   return `/api/cover/meting?server=${toMetingServer(source)}&id=${encodeURIComponent(picId)}`;
 }
@@ -110,7 +182,6 @@ export async function searchSongs(
     id: keyword,
   });
 
-  // Meting search returns all results; simulate pagination client-side
   const total = songs.length;
   const start = (page - 1) * PAGE_SIZE;
   const slice = songs.slice(start, start + PAGE_SIZE);
@@ -167,6 +238,23 @@ export async function fetchAudioUrl(source: SourceId, platformId: string): Promi
     const result = await metingFetch<MetingUrl>(source, {
       type: 'url',
       id: platformId,
+    });
+    return result.url || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchCoverUrl(
+  source: SourceId,
+  picId: string,
+  size = '300'
+): Promise<string | null> {
+  try {
+    const result = await metingFetch<MetingPicture>(source, {
+      type: 'pic',
+      id: picId,
+      size,
     });
     return result.url || null;
   } catch {

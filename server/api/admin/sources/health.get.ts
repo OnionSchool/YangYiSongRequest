@@ -13,13 +13,8 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
   requirePlanner(event);
 
-  const metingUrl = process.env.METING_API_URL;
-
   const results = await Promise.all(
     SOURCES.map(async ({ source, label }) => {
-      if (!metingUrl) {
-        return { source, label, ok: false, detail: '未配置 METING_API_URL' };
-      }
       try {
         const result = await searchSongs(source, '测试', 1);
         return {

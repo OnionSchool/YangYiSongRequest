@@ -198,6 +198,18 @@ export const powNonce = table('PowNonce', {
     .default(sql`unixepoch()`),
 });
 
+export const metingApi = table('MetingApi', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  baseUrl: text('baseUrl').notNull(),
+  platforms: text('platforms').notNull().default('["netease","qq","kugou"]'),
+  enabled: integer('enabled').notNull().default(1),
+  sortOrder: integer('sortOrder').notNull().default(0),
+  createdAt: integer('createdAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+});
+
 export const requestRateLimit = table('RequestRateLimit', {
   key: text('key').primaryKey(),
   windowStart: integer('windowStart').notNull(),
