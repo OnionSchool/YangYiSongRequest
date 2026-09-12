@@ -20,6 +20,7 @@ export default defineEventHandler(async (event) => {
   const current = request.playbackStatus;
   const allowed =
     (body.status === 'DOWNLOADED' && current === 'PENDING_DOWNLOAD') ||
+    (body.status === 'PENDING_DOWNLOAD' && current === 'PLAYBACK_ERROR') ||
     (body.status === 'PLAYBACK_ERROR' &&
       (current === 'PENDING_DOWNLOAD' || current === 'DOWNLOADED')) ||
     (body.status === 'PLAYED' && current === 'DOWNLOADED') ||

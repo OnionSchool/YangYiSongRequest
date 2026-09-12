@@ -50,7 +50,10 @@ async function doUnschedule(requestId: string) {
   }
 }
 
-async function setPlaybackStatus(id: string, status: 'DOWNLOADED' | 'PLAYED' | 'PLAYBACK_ERROR') {
+async function setPlaybackStatus(
+  id: string,
+  status: 'PENDING_DOWNLOAD' | 'DOWNLOADED' | 'PLAYED' | 'PLAYBACK_ERROR'
+) {
   try {
     await updatePlaybackStatus(id, status);
     await load();
@@ -268,6 +271,16 @@ onMounted(load);
               @click="setPlaybackStatus(song.id, 'DOWNLOADED')"
             >
               标为已下载
+            </button>
+            <button
+              v-if="
+                (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
+                song.playbackStatus === 'PLAYBACK_ERROR'
+              "
+              class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
+              @click="setPlaybackStatus(song.id, 'PENDING_DOWNLOAD')"
+            >
+              恢复待下载
             </button>
             <button
               v-if="
