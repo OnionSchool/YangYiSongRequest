@@ -3,8 +3,8 @@
 FROM oven/bun:1.3.13-alpine AS deps
 WORKDIR /app
 
-# better-sqlite3 需要本机构建工具。
-RUN apk add --no-cache python3 make g++
+# better-sqlite3 需要 node-gyp 与本机构建工具。
+RUN apk add --no-cache python3 make g++ nodejs npm node-gyp
 COPY package.json bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile
