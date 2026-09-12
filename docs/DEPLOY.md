@@ -40,11 +40,9 @@ location / {
 
 ## 音频下载
 
-下载默认关闭。仅当同时配置可信 HTTPS 主机和对应音源 URL 模板时启用：
+下载默认关闭。在超级管理员后台的“音源状态”页面填写对应音源的下载地址后启用；地址中的 `{id}` 会替换为歌曲标识。单曲大小限制可通过环境变量调整：
 
 ```dotenv
-MUSIC_DOWNLOAD_TRUSTED_HOSTS=music.example.edu
-MUSIC_DOWNLOAD_URL_NETEASE=https://music.example.edu/audio/{id}
 MUSIC_DOWNLOAD_MAX_BYTES=31457280
 ```
 

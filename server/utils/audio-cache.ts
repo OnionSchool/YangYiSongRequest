@@ -5,7 +5,7 @@ import { db, sqlite } from './db';
 import { audioCacheObject, songRequest } from './schema';
 import { eq } from 'drizzle-orm';
 import { badRequest, notFound } from './errors';
-import { readDownloadTemplates, validateDownloadTemplate } from './download-config';
+import { readDownloadTemplates } from './download-config';
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'audio-cache');
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -69,7 +69,6 @@ async function requireDownloadUrl(source: string, platformId: string): Promise<U
   const templates = await readDownloadTemplates();
   const raw = templates[source as keyof typeof templates];
   if (!raw) throw badRequest('DOWNLOAD_UNAVAILABLE', '该音源未配置受控下载地址');
-  validateDownloadTemplate(raw);
   let target: URL;
   try {
     target = new URL(raw.replaceAll('{id}', encodeURIComponent(platformId)));

@@ -82,7 +82,7 @@ onMounted(load);
     <div class="flex items-center justify-between mb-6">
       <div>
         <h1 class="text-xl font-bold" style="font-family: var(--font-display)">音源状态</h1>
-        <p class="text-sm text-ink-faint mt-0.5">查看搜索可用性，并维护获授权的下载代理</p>
+        <p class="text-sm text-ink-faint mt-0.5">查看搜索可用性，并维护下载地址</p>
       </div>
       <button
         class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-soft hover:border-ink-faint hover:text-ink transition-colors flex items-center gap-1.5 disabled:opacity-50"
@@ -143,17 +143,16 @@ onMounted(load);
 
       <section class="paper-card p-5 space-y-4">
         <div>
-          <h2 class="font-medium">受控下载地址</h2>
+          <h2 class="font-medium">下载地址</h2>
           <p class="mt-1 text-sm text-ink-faint">
-            仅填写校内获授权下载代理的 HTTPS 模板；必须包含
-            <code>{id}</code>，且主机需由部署者加入可信白名单。
+            每个音源可分别填写下载地址；使用 <code>{id}</code> 会自动替换为歌曲标识。
           </p>
         </div>
         <label v-for="src in sources" :key="src.source" class="block">
           <span class="text-sm font-medium">{{ src.label }}</span>
           <input
             v-model="templates[src.source]"
-            type="url"
+            type="text"
             placeholder="https://audio.example.edu/source/{id}"
             class="mt-1.5 w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-mono focus:border-ink-faint focus:outline-none"
           />
