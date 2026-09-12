@@ -17,6 +17,8 @@ export interface AdminSession {
   displayName: string;
   role: AdminRole;
   mustChangePassword: boolean;
+  email: string | null;
+  emailVerified: boolean;
   csrfToken: string;
 }
 
@@ -102,6 +104,8 @@ export async function login(
       displayName: user.displayName ?? user.username,
       role: user.role as AdminRole,
       mustChangePassword: user.mustChangePassword === 1,
+      email: user.email ?? null,
+      emailVerified: !!user.emailVerifiedAt,
       csrfToken,
     },
   };
@@ -111,7 +115,7 @@ export function verifyToken(token: string): AdminSession | null {
   const current = now();
   const row = sqlite
     .prepare(
-      `SELECT s."csrfToken", s."lastSeenAt", s."expiresAt", s."sessionVersion", u."id", u."username", u."displayName", u."role", u."mustChangePassword", u."disabled", u."sessionVersion" AS "userSessionVersion"
+      `SELECT s."csrfToken", s."lastSeenAt", s."expiresAt", s."sessionVersion", u."id", u."username", u."displayName", u."role", u."mustChangePassword", u."email", u."emailVerifiedAt", u."disabled", u."sessionVersion" AS "userSessionVersion"
     FROM "AdminSession" s JOIN "AdminUser" u ON u."id" = s."userId"
     WHERE s."tokenHash" = ? AND s."revokedAt" IS NULL`
     )
@@ -138,6 +142,8 @@ export function verifyToken(token: string): AdminSession | null {
     displayName: row.displayName ? String(row.displayName) : String(row.username),
     role: row.role as AdminRole,
     mustChangePassword: row.mustChangePassword === 1,
+    email: row.email ? String(row.email) : null,
+    emailVerified: !!row.emailVerifiedAt,
     csrfToken: String(row.csrfToken),
   };
 }

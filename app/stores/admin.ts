@@ -7,6 +7,7 @@ export interface AdminUser {
   displayName: string;
   role: 'SUPER' | 'PLANNER' | 'TECHNICIAN';
   mustChangePassword: boolean;
+  mustBindEmail: boolean;
   csrfToken: string;
   debugMode?: boolean;
 }

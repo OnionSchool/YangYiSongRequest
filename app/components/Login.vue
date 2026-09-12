@@ -18,7 +18,13 @@ async function submit(): Promise<void> {
   failure.value = null;
   try {
     await admin.login(username.value, password.value);
-    await router.push(admin.me?.mustChangePassword ? '/admin/password' : '/admin');
+    if (admin.me?.mustChangePassword) {
+      await router.push('/admin/password');
+    } else if (admin.me?.mustBindEmail) {
+      await router.push('/admin/bind-email');
+    } else {
+      await router.push('/admin');
+    }
   } catch (error) {
     failure.value = error instanceof ApiError ? error.message : '登录失败';
   } finally {

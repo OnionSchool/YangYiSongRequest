@@ -27,6 +27,7 @@ export default defineEventHandler(async (event) => {
     displayName: session.displayName,
     role: session.role,
     mustChangePassword: site.forceChangePassword && session.mustChangePassword,
+    mustBindEmail: site.requireEmailBind && !session.emailVerified,
     csrfToken: session.csrfToken,
   };
 });

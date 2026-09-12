@@ -15,5 +15,6 @@ export default defineEventHandler(async (event) => {
     announcement: site.announcement,
     maxScheduleDays: site.maxScheduleDays,
     forceChangePassword: site.forceChangePassword,
+    requireEmailBind: site.requireEmailBind,
   };
 });

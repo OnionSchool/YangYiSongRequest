@@ -66,7 +66,21 @@ export const adminUser = table('AdminUser', {
   mustChangePassword: integer('mustChangePassword').notNull().default(0),
   disabled: integer('disabled').notNull().default(0),
   lastLoginAt: integer('lastLoginAt'),
+  email: text('email'),
+  emailVerifiedAt: integer('emailVerifiedAt'),
   sessionVersion: integer('sessionVersion').notNull().default(0),
+  createdAt: integer('createdAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+});
+
+export const emailVerification = table('EmailVerification', {
+  id: text('id').primaryKey(),
+  userId: text('userId').notNull(),
+  email: text('email').notNull(),
+  code: text('code').notNull(),
+  expiresAt: integer('expiresAt').notNull(),
+  usedAt: integer('usedAt'),
   createdAt: integer('createdAt')
     .notNull()
     .default(sql`unixepoch()`),

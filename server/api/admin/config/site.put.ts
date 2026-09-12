@@ -30,6 +30,9 @@ export default defineEventHandler(async (event) => {
   if (typeof body.forceChangePassword === 'boolean') {
     updates.forceChangePassword = encodeBool(body.forceChangePassword);
   }
+  if (typeof body.requireEmailBind === 'boolean') {
+    updates.requireEmailBind = encodeBool(body.requireEmailBind);
+  }
 
   for (const [key, value] of Object.entries(updates)) {
     const existingCount = await db.select().from(siteSetting).where(eq(siteSetting.key, key));

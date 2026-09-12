@@ -10,6 +10,7 @@ export interface SiteConfig {
   announcement: string;
   maxScheduleDays: number;
   forceChangePassword: boolean;
+  requireEmailBind: boolean;
 }
 
 export interface SlotView {
@@ -32,6 +33,7 @@ const DEFAULTS: SiteConfig = {
   announcement: '',
   maxScheduleDays: 14,
   forceChangePassword: true,
+  requireEmailBind: false,
 };
 
 const CACHE_TTL_MS = 30_000;
@@ -67,6 +69,7 @@ async function load(): Promise<SiteSnapshot> {
     announcement: map.get('announcement') ?? DEFAULTS.announcement,
     maxScheduleDays: decodeInt(map.get('maxScheduleDays'), DEFAULTS.maxScheduleDays),
     forceChangePassword: decodeBool(map.get('forceChangePassword'), DEFAULTS.forceChangePassword),
+    requireEmailBind: decodeBool(map.get('requireEmailBind'), DEFAULTS.requireEmailBind),
     slots: (slots as any[]).map((slot) => ({
       id: slot.id,
       name: slot.name,

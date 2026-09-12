@@ -23,6 +23,7 @@ const activeTab = ref('site');
 const requestsOpen = ref(true);
 const requireIdentity = ref(true);
 const forceChangePassword = ref(true);
+const requireEmailBind = ref(false);
 const announcement = ref('');
 const maxScheduleDays = ref(14);
 const siteMsg = ref<string | null>(null);
@@ -72,6 +73,7 @@ async function loadAll() {
       requestsOpen.value = site.requestsOpen;
       requireIdentity.value = site.requireIdentity;
       forceChangePassword.value = site.forceChangePassword ?? true;
+      requireEmailBind.value = site.requireEmailBind ?? false;
       announcement.value = site.announcement;
       maxScheduleDays.value = site.maxScheduleDays;
     }
@@ -110,6 +112,7 @@ async function saveSite() {
       requestsOpen: requestsOpen.value,
       requireIdentity: requireIdentity.value,
       forceChangePassword: forceChangePassword.value,
+      requireEmailBind: requireEmailBind.value,
       announcement: announcement.value,
       maxScheduleDays: maxScheduleDays.value,
     });
@@ -266,6 +269,21 @@ onMounted(loadAll);
           </div>
           <label class="relative inline-flex items-center cursor-pointer">
             <input v-model="forceChangePassword" type="checkbox" class="sr-only peer" />
+            <div
+              class="w-10 h-6 bg-rule rounded-full peer-checked:bg-green-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"
+            />
+          </label>
+        </div>
+
+        <div class="border-t border-rule pt-5 flex items-center justify-between">
+          <div>
+            <p class="font-medium">登录后绑定邮箱</p>
+            <p class="text-sm text-ink-faint mt-0.5">
+              要求管理员登录后绑定并验证邮箱地址（需配置 SMTP）
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input v-model="requireEmailBind" type="checkbox" class="sr-only peer" />
             <div
               class="w-10 h-6 bg-rule rounded-full peer-checked:bg-green-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"
             />

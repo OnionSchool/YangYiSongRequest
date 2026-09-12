@@ -204,6 +204,7 @@ export const readSiteConfig = () =>
     requestsOpen: boolean;
     requireIdentity: boolean;
     forceChangePassword: boolean;
+    requireEmailBind: boolean;
     announcement: string;
     maxScheduleDays: number;
   }>('/api/admin/config/site');
@@ -212,6 +213,7 @@ export const saveSiteConfig = (body: {
   requestsOpen?: boolean;
   requireIdentity?: boolean;
   forceChangePassword?: boolean;
+  requireEmailBind?: boolean;
   announcement?: string;
   maxScheduleDays?: number;
 }) => put<unknown>('/api/admin/config/site', body);
