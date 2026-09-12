@@ -1,4 +1,5 @@
 import { createError, getCookie, getRequestHeader, getRequestURL } from 'h3';
+import { getDebugSession, isDebugMode } from '../utils/admin-auth';
 import { verifyToken } from '../utils/auth';
 
 export default defineEventHandler((event) => {
@@ -12,8 +13,12 @@ export default defineEventHandler((event) => {
   if (!origin || origin !== getRequestURL(event).origin) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: '请求来源无效' });
   }
-  const token = getCookie(event, 'admin_token');
-  const session = token ? verifyToken(token) : null;
+  const session = isDebugMode()
+    ? getDebugSession(event)
+    : (() => {
+        const token = getCookie(event, 'admin_token');
+        return token ? verifyToken(token) : null;
+      })();
   if (!session || getRequestHeader(event, 'x-csrf-token') !== session.csrfToken) {
     throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: 'CSRF 校验失败' });
   }

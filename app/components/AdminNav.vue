@@ -9,6 +9,11 @@ const router = useRouter();
 
 const mobileOpen = ref(false);
 const switchingRole = ref(false);
+const debugRoles = [
+  { value: 'SUPER', label: '超级管理员' },
+  { value: 'PLANNER', label: '策划' },
+  { value: 'TECHNICIAN', label: '技术员' },
+] as const;
 
 // 路由变化时关闭抽屉
 watch(
@@ -156,28 +161,18 @@ async function switchDebugRole(role: 'SUPER' | 'PLANNER' | 'TECHNICIAN') {
         </p>
         <div class="flex rounded-lg bg-paper-deep/60 p-0.5 text-xs">
           <button
+            v-for="debugRole in debugRoles"
+            :key="debugRole.value"
             class="flex-1 rounded-md px-2 py-1 transition-colors"
             :class="
-              admin.isSuper
+              admin.me?.role === debugRole.value
                 ? 'bg-paper text-orange-deep shadow-sm'
                 : 'text-ink-faint hover:text-ink'
             "
             :disabled="switchingRole"
-            @click="switchDebugRole('SUPER')"
+            @click="switchDebugRole(debugRole.value)"
           >
-            超级管理员
-          </button>
-          <button
-            class="flex-1 rounded-md px-2 py-1 transition-colors"
-            :class="
-              !admin.isSuper
-                ? 'bg-paper text-orange-deep shadow-sm'
-                : 'text-ink-faint hover:text-ink'
-            "
-            :disabled="switchingRole"
-            @click="switchDebugRole('PLANNER')"
-          >
-            策划
+            {{ debugRole.label }}
           </button>
         </div>
       </div>
@@ -303,24 +298,18 @@ async function switchDebugRole(role: 'SUPER' | 'PLANNER' | 'TECHNICIAN') {
                   class="mt-2 flex rounded-lg bg-paper-deep/60 p-0.5 text-xs"
                 >
                   <button
+                    v-for="debugRole in debugRoles"
+                    :key="debugRole.value"
                     class="flex-1 rounded-md px-2 py-1.5 transition-colors"
                     :class="
-                      admin.isSuper ? 'bg-paper text-orange-deep shadow-sm' : 'text-ink-faint'
+                      admin.me?.role === debugRole.value
+                        ? 'bg-paper text-orange-deep shadow-sm'
+                        : 'text-ink-faint'
                     "
                     :disabled="switchingRole"
-                    @click="switchDebugRole('SUPER')"
+                    @click="switchDebugRole(debugRole.value)"
                   >
-                    超级管理员
-                  </button>
-                  <button
-                    class="flex-1 rounded-md px-2 py-1.5 transition-colors"
-                    :class="
-                      !admin.isSuper ? 'bg-paper text-orange-deep shadow-sm' : 'text-ink-faint'
-                    "
-                    :disabled="switchingRole"
-                    @click="switchDebugRole('PLANNER')"
-                  >
-                    策划
+                    {{ debugRole.label }}
                   </button>
                 </div>
               </div>
