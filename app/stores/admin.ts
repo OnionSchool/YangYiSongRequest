@@ -4,6 +4,7 @@ import { apiFetch, setCsrfToken } from '~/lib/api';
 
 export interface AdminUser {
   username: string;
+  displayName: string;
   role: 'SUPER' | 'PLANNER' | 'TECHNICIAN';
   mustChangePassword: boolean;
   csrfToken: string;

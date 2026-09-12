@@ -14,6 +14,7 @@ const debugRoles = [
   { value: 'PLANNER', label: '策划' },
   { value: 'TECHNICIAN', label: '技术员' },
 ] as const;
+const currentDisplayName = computed(() => admin.me?.displayName ?? admin.me?.username ?? '');
 
 // 路由变化时关闭抽屉
 watch(
@@ -125,10 +126,10 @@ async function switchDebugRole(role: 'SUPER' | 'PLANNER' | 'TECHNICIAN') {
         <div
           class="flex h-8 w-8 items-center justify-center rounded-full bg-orange/15 text-sm font-bold text-orange-deep"
         >
-          {{ admin.me?.username?.charAt(0)?.toUpperCase() }}
+          {{ currentDisplayName.charAt(0)?.toUpperCase() }}
         </div>
         <div class="min-w-0 flex-1">
-          <p class="truncate text-sm font-medium">{{ admin.me?.username }}</p>
+          <p class="truncate text-sm font-medium">{{ currentDisplayName }}</p>
           <p class="text-[11px] text-ink-faint">
             {{ admin.isSuper ? '超级管理员' : admin.me?.role === 'PLANNER' ? '策划' : '技术员' }}
           </p>
@@ -272,10 +273,10 @@ async function switchDebugRole(role: 'SUPER' | 'PLANNER' | 'TECHNICIAN') {
                   <div
                     class="flex h-9 w-9 items-center justify-center rounded-full bg-orange/15 text-sm font-bold text-orange-deep"
                   >
-                    {{ admin.me?.username?.charAt(0)?.toUpperCase() }}
+                    {{ currentDisplayName.charAt(0)?.toUpperCase() }}
                   </div>
                   <div class="min-w-0 flex-1">
-                    <p class="text-sm font-medium">{{ admin.me?.username }}</p>
+                    <p class="text-sm font-medium">{{ currentDisplayName }}</p>
                     <p class="text-[11px] text-ink-faint">
                       {{
                         admin.isSuper

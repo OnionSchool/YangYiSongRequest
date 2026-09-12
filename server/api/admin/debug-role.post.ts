@@ -25,6 +25,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     username: 'debug',
+    displayName: '调试用户',
     role,
     mustChangePassword: false,
     csrfToken: 'debug',

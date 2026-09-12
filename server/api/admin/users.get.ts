@@ -13,6 +13,7 @@ export default defineEventHandler(async (event) => {
   return users.map((u: any) => ({
     id: u.id,
     username: u.username,
+    displayName: u.displayName ?? u.username,
     role: u.role,
     disabled: u.disabled === 1,
     mustChangePassword: u.mustChangePassword === 1,

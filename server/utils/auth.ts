@@ -14,6 +14,7 @@ const LOGIN_MAX_FAILURES = 5;
 export interface AdminSession {
   userId: string;
   username: string;
+  displayName: string;
   role: AdminRole;
   mustChangePassword: boolean;
   csrfToken: string;
@@ -31,6 +32,24 @@ function assertUsername(username: string): void {
 
 export function assertPassword(password: string): void {
   if (password.length < 12) throw badRequest('WEAK_PASSWORD', '密码至少需要 12 位');
+}
+
+function normalizeDisplayName(displayName: string | null | undefined): string | null | undefined {
+  if (displayName === undefined) return undefined;
+  if (displayName === null) return null;
+  if (typeof displayName !== 'string') throw badRequest('INVALID_DISPLAY_NAME', '显示名称格式无效');
+  const normalized = displayName.trim();
+  if (!normalized) return null;
+  if (
+    normalized.length > 64 ||
+    Array.from(normalized).some((character) => {
+      const code = character.charCodeAt(0);
+      return code < 32 || code === 127;
+    })
+  ) {
+    throw badRequest('INVALID_DISPLAY_NAME', '显示名称长度需为 1 到 64 个字符');
+  }
+  return normalized;
 }
 
 export async function login(
@@ -80,6 +99,7 @@ export async function login(
     session: {
       userId: user.id,
       username: user.username,
+      displayName: user.displayName ?? user.username,
       role: user.role as AdminRole,
       mustChangePassword: user.mustChangePassword === 1,
       csrfToken,
@@ -91,7 +111,7 @@ export function verifyToken(token: string): AdminSession | null {
   const current = now();
   const row = sqlite
     .prepare(
-      `SELECT s."csrfToken", s."lastSeenAt", s."expiresAt", s."sessionVersion", u."id", u."username", u."role", u."mustChangePassword", u."disabled", u."sessionVersion" AS "userSessionVersion"
+      `SELECT s."csrfToken", s."lastSeenAt", s."expiresAt", s."sessionVersion", u."id", u."username", u."displayName", u."role", u."mustChangePassword", u."disabled", u."sessionVersion" AS "userSessionVersion"
     FROM "AdminSession" s JOIN "AdminUser" u ON u."id" = s."userId"
     WHERE s."tokenHash" = ? AND s."revokedAt" IS NULL`
     )
@@ -115,6 +135,7 @@ export function verifyToken(token: string): AdminSession | null {
   return {
     userId: String(row.id),
     username: String(row.username),
+    displayName: row.displayName ? String(row.displayName) : String(row.username),
     role: row.role as AdminRole,
     mustChangePassword: row.mustChangePassword === 1,
     csrfToken: String(row.csrfToken),
@@ -156,7 +177,8 @@ export async function changePassword(
 export async function createAdminUser(
   username: string,
   password: string,
-  role: AdminRole
+  role: AdminRole,
+  displayName?: string | null
 ): Promise<string> {
   assertUsername(username);
   assertPassword(password);
@@ -164,21 +186,28 @@ export async function createAdminUser(
   const existing = await db.query.adminUser.findFirst({ where: eq(adminUser.username, username) });
   if (existing) throw badRequest('USERNAME_TAKEN', '账号已存在');
   const id = `user_${randomBytes(8).toString('hex')}`;
-  await db
-    .insert(adminUser)
-    .values({ id, username, passwordHash: hashPassword(password), role, mustChangePassword: 1 });
+  const normalizedDisplayName = normalizeDisplayName(displayName);
+  await db.insert(adminUser).values({
+    id,
+    username,
+    displayName: normalizedDisplayName ?? null,
+    passwordHash: hashPassword(password),
+    role,
+    mustChangePassword: 1,
+  });
   return id;
 }
 
 export async function updateAdminUser(
   userId: string,
-  updates: { role?: AdminRole; disabled?: boolean; password?: string }
+  updates: { role?: AdminRole; disabled?: boolean; password?: string; displayName?: string | null }
 ): Promise<void> {
   const user = await db.query.adminUser.findFirst({ where: eq(adminUser.id, userId) });
   if (!user) throw badRequest('USER_NOT_FOUND', '用户不存在');
   if (updates.role && !isAdminRole(updates.role))
     throw badRequest('INVALID_ROLE', '无效的管理员角色');
   if (updates.password) assertPassword(updates.password);
+  const normalizedDisplayName = normalizeDisplayName(updates.displayName);
   const removesSuper =
     user.role === 'SUPER' && (updates.disabled || (updates.role && updates.role !== 'SUPER'));
   if (removesSuper) {
@@ -192,12 +221,14 @@ export async function updateAdminUser(
   const patch: {
     role?: AdminRole;
     disabled?: number;
+    displayName?: string | null;
     passwordHash?: string;
     sessionVersion?: ReturnType<typeof sql>;
   } = {};
   if (updates.role) patch.role = updates.role;
   if (typeof updates.disabled === 'boolean') patch.disabled = updates.disabled ? 1 : 0;
   if (updates.password) patch.passwordHash = hashPassword(updates.password);
+  if (normalizedDisplayName !== undefined) patch.displayName = normalizedDisplayName;
   if (updates.role || updates.disabled !== undefined || updates.password)
     patch.sessionVersion = sql`${adminUser.sessionVersion} + 1`;
   if (Object.keys(patch).length)

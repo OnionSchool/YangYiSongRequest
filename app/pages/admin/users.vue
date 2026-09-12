@@ -13,6 +13,7 @@ const msg = ref<string | null>(null);
 // New user form
 const showNew = ref(false);
 const newUsername = ref('');
+const newDisplayName = ref('');
 const newPassword = ref('');
 const newRole = ref<'SUPER' | 'PLANNER' | 'TECHNICIAN'>('PLANNER');
 const creating = ref(false);
@@ -37,10 +38,12 @@ async function doCreate() {
   try {
     await createUser({
       username: newUsername.value,
+      displayName: newDisplayName.value,
       password: newPassword.value,
       role: newRole.value,
     });
     newUsername.value = '';
+    newDisplayName.value = '';
     newPassword.value = '';
     showNew.value = false;
     msg.value = '创建成功';
@@ -52,6 +55,38 @@ async function doCreate() {
     error.value = e instanceof ApiError ? e.message : '创建失败';
   } finally {
     creating.value = false;
+  }
+}
+
+const editingDisplayNameId = ref<string | null>(null);
+const editingDisplayName = ref('');
+const savingDisplayName = ref(false);
+
+function startDisplayNameEdit(user: AdminUserRow) {
+  editingDisplayNameId.value = user.id;
+  editingDisplayName.value = user.displayName;
+}
+
+function cancelDisplayNameEdit() {
+  editingDisplayNameId.value = null;
+  editingDisplayName.value = '';
+}
+
+async function saveDisplayName(user: AdminUserRow) {
+  savingDisplayName.value = true;
+  error.value = null;
+  try {
+    await patchUser(user.id, { displayName: editingDisplayName.value });
+    user.displayName = editingDisplayName.value.trim() || user.username;
+    cancelDisplayNameEdit();
+    msg.value = '显示名称已保存';
+    setTimeout(() => {
+      msg.value = null;
+    }, 2000);
+  } catch (e: any) {
+    error.value = e instanceof ApiError ? e.message : '保存失败';
+  } finally {
+    savingDisplayName.value = false;
   }
 }
 
@@ -145,6 +180,13 @@ onMounted(load);
             class="rounded-lg border border-rule bg-paper px-3 py-2 text-sm focus:border-ink-faint focus:outline-none"
           />
           <input
+            v-model="newDisplayName"
+            type="text"
+            maxlength="64"
+            placeholder="显示名称（如真实姓名）"
+            class="rounded-lg border border-rule bg-paper px-3 py-2 text-sm focus:border-ink-faint focus:outline-none"
+          />
+          <input
             v-model="newPassword"
             type="password"
             placeholder="密码"
@@ -188,13 +230,46 @@ onMounted(load);
             user.role === 'SUPER' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
           "
         >
-          {{ user.username.charAt(0).toUpperCase() }}
+          {{ user.displayName.charAt(0).toUpperCase() }}
         </div>
 
         <!-- Info -->
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
-            <span class="font-medium">{{ user.username }}</span>
+            <template v-if="editingDisplayNameId === user.id">
+              <input
+                v-model="editingDisplayName"
+                type="text"
+                maxlength="64"
+                class="min-w-0 rounded border border-rule bg-paper px-2 py-1 text-sm focus:border-ink-faint focus:outline-none"
+                aria-label="显示名称"
+                @keyup.enter="saveDisplayName(user)"
+                @keyup.escape="cancelDisplayNameEdit"
+              />
+              <button
+                class="text-xs font-medium text-orange-deep disabled:opacity-50"
+                :disabled="savingDisplayName"
+                @click="saveDisplayName(user)"
+              >
+                保存
+              </button>
+              <button
+                class="text-xs text-ink-faint"
+                :disabled="savingDisplayName"
+                @click="cancelDisplayNameEdit"
+              >
+                取消
+              </button>
+            </template>
+            <template v-else>
+              <span class="font-medium">{{ user.displayName }}</span>
+              <button
+                class="text-xs text-ink-faint hover:text-ink"
+                @click="startDisplayNameEdit(user)"
+              >
+                编辑名称
+              </button>
+            </template>
             <span
               class="text-[10px] px-1.5 py-0.5 rounded-md font-medium"
               :class="
@@ -212,7 +287,9 @@ onMounted(load);
               已禁用
             </span>
           </div>
-          <p class="text-xs text-ink-faint mt-0.5">上次登录：{{ formatDate(user.lastLoginAt) }}</p>
+          <p class="text-xs text-ink-faint mt-0.5">
+            账号：{{ user.username }} · 上次登录：{{ formatDate(user.lastLoginAt) }}
+          </p>
         </div>
 
         <!-- Action -->

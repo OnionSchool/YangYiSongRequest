@@ -49,6 +49,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     username: session.username,
+    displayName: session.displayName,
     role: session.role,
     mustChangePassword: site.forceChangePassword && session.mustChangePassword,
     csrfToken: session.csrfToken,

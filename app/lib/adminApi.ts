@@ -6,6 +6,7 @@ export type AdminRole = 'SUPER' | 'PLANNER' | 'TECHNICIAN';
 
 export interface AdminMe {
   username: string;
+  displayName: string;
   role: AdminRole;
   mustChangePassword: boolean;
   csrfToken: string;
@@ -187,6 +188,7 @@ export interface SourceHealthRow {
 export interface AdminUserRow {
   id: string;
   username: string;
+  displayName: string;
   role: AdminRole;
   disabled: boolean;
   mustChangePassword: boolean;
@@ -267,11 +269,15 @@ export const clearSourceCookie = (source: SourceId) =>
   apiFetch<unknown>(`/api/admin/sources/${source}/cookie`, { method: 'DELETE' });
 
 export const readUsers = () => apiFetch<AdminUserRow[]>('/api/admin/users');
-export const createUser = (body: { username: string; password: string; role: AdminRole }) =>
-  post<{ id: string }>('/api/admin/users', body);
+export const createUser = (body: {
+  username: string;
+  password: string;
+  role: AdminRole;
+  displayName?: string;
+}) => post<{ id: string }>('/api/admin/users', body);
 export const patchUser = (
   id: string,
-  body: { disabled?: boolean; role?: AdminRole; password?: string }
+  body: { disabled?: boolean; role?: AdminRole; password?: string; displayName?: string | null }
 ) =>
   apiFetch<{ ok: true }>(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 

@@ -12,6 +12,7 @@ export function getDebugSession(event: H3Event): AdminSession {
   return {
     userId: 'debug',
     username: 'debug',
+    displayName: '调试用户',
     role,
     mustChangePassword: false,
     csrfToken: 'debug',

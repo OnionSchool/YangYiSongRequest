@@ -60,6 +60,7 @@ export const bannedWord = table('BannedWord', {
 export const adminUser = table('AdminUser', {
   id: text('id').primaryKey(),
   username: text('username').notNull().unique(),
+  displayName: text('displayName'),
   passwordHash: text('passwordHash').notNull(),
   role: text('role').notNull().default('PLANNER'),
   mustChangePassword: integer('mustChangePassword').notNull().default(0),
