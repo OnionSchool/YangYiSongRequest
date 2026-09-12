@@ -12,4 +12,5 @@ export default defineNitroConfig({
   alias: {
     '~': resolve(currentDir, './server'),
   },
+  errorHandler: resolve(currentDir, './server/error-handler.ts'),
 });

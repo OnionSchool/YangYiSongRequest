@@ -137,20 +137,25 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   } catch {
     throw new ApiError('PARSE', `服务返回了无法解析的响应`, response.status);
   }
+  const payload = data as {
+    code?: unknown;
+    message?: unknown;
+    data?: unknown;
+  } | null;
   if (!response.ok) {
-    const payload = data as {
-      error?: { code?: string; message?: string };
-      message?: string;
-    } | null;
     throw new ApiError(
-      payload?.error?.code ?? 'UNKNOWN',
-      payload?.error?.message ?? payload?.message ?? `服务返回 ${response.status}`,
+      typeof payload?.code === 'string' ? payload.code : 'UNKNOWN',
+      typeof payload?.message === 'string' ? payload.message : `服务返回 ${response.status}`,
       response.status
     );
   }
-  const token = (data as { csrfToken?: unknown } | null)?.csrfToken;
+  if (payload?.code !== 0 || !payload || !('data' in payload)) {
+    throw new ApiError('INVALID_RESPONSE', '服务返回了不符合规范的响应', response.status);
+  }
+  const result = payload.data as T;
+  const token = (result as { csrfToken?: unknown } | null)?.csrfToken;
   if (typeof token === 'string') setCsrfToken(token);
-  return data as T;
+  return result;
 }
 
 export const fetchServerInfo = () => apiFetch<ServerInfo>('/api/version');

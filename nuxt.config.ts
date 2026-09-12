@@ -6,6 +6,10 @@ export default defineNuxtConfig({
 
   modules: ['@pinia/nuxt'],
 
+  nitro: {
+    errorHandler: './server/error-handler.ts',
+  },
+
   // SPA 模式（与原有 Vite 部署方式一致）
   ssr: false,
 
