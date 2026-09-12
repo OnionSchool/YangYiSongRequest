@@ -20,7 +20,9 @@ FROM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN addgroup -g 1001 -S app && adduser -S app -u 1001 \
+# ffprobe is required to detect audio duration from externally resolved Meting URLs.
+RUN apk add --no-cache ffmpeg \
+  && addgroup -g 1001 -S app && adduser -S app -u 1001 \
   && mkdir -p /app/data && chown -R app:app /app/data
 COPY --from=builder --chown=app:app /app/.output ./.output
 COPY --from=builder --chown=app:app /app/server/migrations ./server/migrations
