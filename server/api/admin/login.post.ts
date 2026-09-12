@@ -26,8 +26,8 @@ export default defineEventHandler(async (event) => {
   } catch (error) {
     if (error instanceof AppError) {
       throw createError({
-        statusCode: error.statusCode,
-        statusMessage: 'Bad Request',
+        statusCode: error.code === 'BAD_CREDENTIALS' ? 401 : error.statusCode,
+        statusMessage: error.code === 'BAD_CREDENTIALS' ? 'Unauthorized' : 'Bad Request',
         message: error.message,
         data: { code: error.code, detail: error.detail },
       });
