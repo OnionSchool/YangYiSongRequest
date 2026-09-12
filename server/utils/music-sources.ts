@@ -41,6 +41,7 @@ const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 20;
 const SEARCH_CACHE_TTL_MS = 60 * 60_000;
 const SEARCH_CACHE_MAX_ENTRIES = 400;
+const SIGNED_AUDIO_URL_MAX_ENTRIES = SEARCH_CACHE_MAX_ENTRIES * PAGE_SIZE;
 const ffprobe = promisify(execFile);
 
 interface CachedSearchPage {
@@ -52,6 +53,36 @@ interface CachedSearchPage {
 // avoids repeating the URL and ffprobe calls used to obtain missing Meting durations.
 const searchCache = new Map<string, CachedSearchPage>();
 const pendingSearches = new Map<string, Promise<SearchPage>>();
+const signedAudioUrls = new Map<string, { expiresAt: number; url: string }>();
+
+function signedAudioUrlKey(source: SourceId, platformId: string): string {
+  return `${source}\u0000${platformId}`;
+}
+
+function storeSignedAudioUrl(source: SourceId, platformId: string, url: string | undefined): void {
+  if (!url) return;
+  const key = signedAudioUrlKey(source, platformId);
+  if (signedAudioUrls.has(key)) signedAudioUrls.delete(key);
+  signedAudioUrls.set(key, {
+    expiresAt: Date.now() + SEARCH_CACHE_TTL_MS,
+    url,
+  });
+  while (signedAudioUrls.size > SIGNED_AUDIO_URL_MAX_ENTRIES) {
+    const oldestKey = signedAudioUrls.keys().next().value;
+    if (!oldestKey) break;
+    signedAudioUrls.delete(oldestKey);
+  }
+}
+
+function getSignedAudioUrl(source: SourceId, platformId: string): string | null {
+  const key = signedAudioUrlKey(source, platformId);
+  const entry = signedAudioUrls.get(key);
+  if (!entry || entry.expiresAt <= Date.now()) {
+    signedAudioUrls.delete(key);
+    return null;
+  }
+  return entry.url;
+}
 
 function searchCacheKey(source: SourceId, keyword: string, page: number): string {
   const normalizedKeyword = keyword
@@ -79,6 +110,7 @@ function storeSearchPage(key: string, value: SearchPage): void {
 /** Clear cached searches after a Meting provider is created, changed, or removed. */
 export function invalidateMusicSearchCache(): void {
   searchCache.clear();
+  signedAudioUrls.clear();
 }
 
 // ── MetingApi DB types ──────────────────────────────────────────────
@@ -168,6 +200,7 @@ interface MetingSong {
   name?: string;
   title?: string;
   artist?: string[] | string;
+  author?: string[] | string;
   album?: string;
   pic_id?: string | number;
   pic?: string;
@@ -319,9 +352,26 @@ function songCoverUrl(source: SourceId, song: MetingSong): string | undefined {
   return song.pic_id == null ? undefined : coverProxyUrl(source, String(song.pic_id));
 }
 
-function formatArtist(artist: string[] | string | undefined): string {
+function formatArtist(
+  artist: string[] | string | undefined,
+  author: string[] | string | undefined
+): string {
+  artist ??= author;
   if (Array.isArray(artist)) return artist.join(' / ') || '未知歌手';
   return String(artist) || '未知歌手';
+}
+
+async function resolveAudioUrl(url: string): Promise<string | null> {
+  try {
+    const response = await fetchExternal(url, { redirect: 'manual' });
+    const location = response.headers.get('location');
+    if (response.status >= 300 && response.status < 400 && location) {
+      return await validExternalUrl(new URL(location, response.url).toString());
+    }
+    return response.ok ? response.url : null;
+  } catch {
+    return null;
+  }
 }
 
 async function mapWithConcurrency<T, R>(
@@ -366,13 +416,14 @@ async function loadSearchSongs(
     total,
     songs: await mapWithConcurrency(slice, 4, async (song) => {
       const id = platformId(song) as string;
+      storeSignedAudioUrl(source, id, song.url);
       return {
         source,
         platformId: id,
         title: song.name ?? song.title ?? '',
-        artist: formatArtist(song.artist),
+        artist: formatArtist(song.artist, song.author),
         album: song.album || undefined,
-        durationMs: await detectAudioDurationMs(source, id),
+        durationMs: await detectAudioDurationMs(source, id, song.url),
         coverUrl: songCoverUrl(source, song),
         vip: false,
       };
@@ -424,9 +475,9 @@ async function fetchDetail(
       source,
       platformId: id,
       title: song.name ?? song.title ?? '',
-      artist: formatArtist(song.artist),
+      artist: formatArtist(song.artist, song.author),
       album: song.album || undefined,
-      durationMs: await detectAudioDurationMs(source, id),
+      durationMs: await detectAudioDurationMs(source, id, song.url),
       coverUrl: songCoverUrl(source, song),
       vip: false,
     };
@@ -438,6 +489,11 @@ async function fetchDetail(
 // ── Audio URL ───────────────────────────────────────────────────────
 
 export async function fetchAudioUrl(source: SourceId, platformId: string): Promise<string | null> {
+  const signedUrl = getSignedAudioUrl(source, platformId);
+  if (signedUrl) {
+    const resolvedUrl = await resolveAudioUrl(signedUrl);
+    if (resolvedUrl) return resolvedUrl;
+  }
   const redirectUrl = await metingRedirect(source, 'download', {
     type: 'url',
     id: platformId,
@@ -458,8 +514,14 @@ export async function fetchAudioUrl(source: SourceId, platformId: string): Promi
   }
 }
 
-export async function detectAudioDurationMs(source: SourceId, platformId: string): Promise<number> {
-  const audioUrl = await fetchAudioUrl(source, platformId);
+export async function detectAudioDurationMs(
+  source: SourceId,
+  platformId: string,
+  signedUrl?: string
+): Promise<number> {
+  const audioUrl = signedUrl
+    ? await resolveAudioUrl(signedUrl)
+    : await fetchAudioUrl(source, platformId);
   if (!audioUrl) return 0;
   try {
     const { stdout } = await ffprobe(
