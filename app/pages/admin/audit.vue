@@ -10,6 +10,7 @@ const total = ref(0);
 const pageSize = ref(30);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const selectedEntry = ref<AuditEntry | null>(null);
 
 const actionLabels: Record<string, string> = {
   login: '登录后台',
@@ -41,7 +42,15 @@ const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.v
 
 function formatDetail(detail: unknown) {
   if (!detail) return '';
-  return typeof detail === 'string' ? detail : JSON.stringify(detail);
+  return typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2);
+}
+
+function openDetail(entry: AuditEntry) {
+  selectedEntry.value = entry;
+}
+
+function closeDetail() {
+  selectedEntry.value = null;
 }
 
 async function load(nextPage = page.value) {
@@ -126,9 +135,13 @@ onMounted(load);
               <td class="max-w-52 px-4 py-3 text-xs text-ink-faint">
                 <span class="line-clamp-2" :title="entry.userAgent">{{ entry.userAgent }}</span>
               </td>
-              <td class="max-w-64 px-4 py-3 text-xs text-ink-faint">
-                <span v-if="entry.targetId" class="mr-1 font-mono">{{ entry.targetId }}</span
-                ><span :title="formatDetail(entry.detail)">{{ formatDetail(entry.detail) }}</span>
+              <td class="px-4 py-3">
+                <button
+                  class="rounded-lg border border-rule px-2.5 py-1 text-xs text-ink-soft hover:border-ink-faint hover:text-ink"
+                  @click="openDetail(entry)"
+                >
+                  查看详情
+                </button>
               </td>
             </tr>
           </tbody>
@@ -155,5 +168,67 @@ onMounted(load);
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="selectedEntry"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          @click.self="closeDetail"
+        >
+          <section
+            class="max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl border border-rule bg-paper shadow-xl"
+          >
+            <header class="flex items-center justify-between border-b border-rule px-5 py-4">
+              <div>
+                <h2 class="font-bold" style="font-family: var(--font-display)">操作详情</h2>
+                <p class="mt-0.5 text-xs text-ink-faint">
+                  {{ actionLabels[selectedEntry.action] ?? selectedEntry.action }} ·
+                  {{ new Date(selectedEntry.createdAt).toLocaleString() }}
+                </p>
+              </div>
+              <button
+                class="rounded-lg px-2 py-1 text-lg text-ink-faint hover:bg-paper-deep hover:text-ink"
+                aria-label="关闭"
+                @click="closeDetail"
+              >
+                ×
+              </button>
+            </header>
+            <div class="max-h-[calc(80vh-8rem)] space-y-4 overflow-y-auto p-5 text-sm">
+              <dl class="grid gap-x-5 gap-y-3 sm:grid-cols-[6rem_1fr]">
+                <dt class="text-ink-faint">操作者</dt>
+                <dd>{{ selectedEntry.actor }}</dd>
+                <dt class="text-ink-faint">IP 地址</dt>
+                <dd class="font-mono text-xs">{{ selectedEntry.ip }}</dd>
+                <dt class="text-ink-faint">设备信息</dt>
+                <dd class="break-all text-xs text-ink-soft">{{ selectedEntry.userAgent }}</dd>
+                <dt v-if="selectedEntry.targetId" class="text-ink-faint">目标 ID</dt>
+                <dd v-if="selectedEntry.targetId" class="break-all font-mono text-xs">
+                  {{ selectedEntry.targetId }}
+                </dd>
+              </dl>
+              <div v-if="selectedEntry.detail">
+                <p class="mb-2 text-sm text-ink-faint">操作内容</p>
+                <pre
+                  class="max-h-72 overflow-auto rounded-lg bg-paper-deep/50 p-3 text-xs leading-5 text-ink-soft whitespace-pre-wrap break-all"
+                  >{{ formatDetail(selectedEntry.detail) }}</pre>
+              </div>
+              <p v-else class="text-sm text-ink-faint">本次操作没有额外内容。</p>
+            </div>
+            <footer class="flex justify-end border-t border-rule px-5 py-3">
+              <button class="btn-secondary px-4 py-2 text-sm" @click="closeDetail">关闭</button>
+            </footer>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
