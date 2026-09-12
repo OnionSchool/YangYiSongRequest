@@ -1,3 +1,5 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { asc, eq } from 'drizzle-orm';
 import { db } from './db';
 import { metingApi } from './schema';
@@ -36,6 +38,7 @@ export class SourceError extends Error {
 
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 20;
+const ffprobe = promisify(execFile);
 
 // ── MetingApi DB types ──────────────────────────────────────────────
 
@@ -115,6 +118,16 @@ interface MetingPicture {
   url?: string;
 }
 
+function validExternalUrl(value: string | null): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function metingRequestUrl(
   baseUrl: string,
   source: SourceId,
@@ -146,6 +159,30 @@ async function metingFetchRaw<T>(
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function metingRedirect(
+  source: SourceId,
+  params: Record<string, string>
+): Promise<string | null> {
+  const apis = await getApisForSource(source);
+  for (const api of apis) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const response = await fetch(metingRequestUrl(api.baseUrl, source, params), {
+        signal: controller.signal,
+        redirect: 'manual',
+      });
+      const url = validExternalUrl(response.headers.get('location'));
+      if (response.status >= 300 && response.status < 400 && url) return url;
+    } catch {
+      // Try the next configured API.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
 }
 
 /** Try each configured API in order; throw if all fail */
@@ -250,7 +287,7 @@ async function fetchDetail(source: SourceId, platformId: string): Promise<SongSu
       title: song.name ?? song.title ?? '',
       artist: formatArtist(song.artist),
       album: song.album || undefined,
-      durationMs: 0,
+      durationMs: await detectAudioDurationMs(source, id),
       coverUrl: songCoverUrl(source, song),
       vip: false,
     };
@@ -262,14 +299,44 @@ async function fetchDetail(source: SourceId, platformId: string): Promise<SongSu
 // ── Audio URL ───────────────────────────────────────────────────────
 
 export async function fetchAudioUrl(source: SourceId, platformId: string): Promise<string | null> {
+  const redirectUrl = await metingRedirect(source, { type: 'url', id: platformId, br: '320' });
+  if (redirectUrl) return redirectUrl;
+
+  // Also accept Meting variants that return a JSON URL rather than a 302 redirect.
   try {
     const result = await metingFetch<MetingUrl>(source, {
       type: 'url',
       id: platformId,
+      br: '320',
     });
-    return result.url || null;
+    return validExternalUrl(result.url ?? null);
   } catch {
     return null;
+  }
+}
+
+export async function detectAudioDurationMs(source: SourceId, platformId: string): Promise<number> {
+  const audioUrl = await fetchAudioUrl(source, platformId);
+  if (!audioUrl) return 0;
+  try {
+    const { stdout } = await ffprobe(
+      'ffprobe',
+      [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'default=noprint_wrappers=1:nokey=1',
+        audioUrl,
+      ],
+      { timeout: 15_000, maxBuffer: 1_024 }
+    );
+    const durationMs = Math.round(Number.parseFloat(stdout.trim()) * 1000);
+    return Number.isFinite(durationMs) && durationMs > 0 ? durationMs : 0;
+  } catch {
+    // ffprobe is intentionally optional: scheduling still works without it.
+    return 0;
   }
 }
 
@@ -278,13 +345,16 @@ export async function fetchCoverUrl(
   picId: string,
   size = '300'
 ): Promise<string | null> {
+  const redirectUrl = await metingRedirect(source, { type: 'pic', id: picId, cover: size });
+  if (redirectUrl) return redirectUrl;
+
   try {
     const result = await metingFetch<MetingPicture>(source, {
       type: 'pic',
       id: picId,
-      size,
+      cover: size,
     });
-    return result.url || null;
+    return validExternalUrl(result.url ?? null);
   } catch {
     return null;
   }
