@@ -20,6 +20,7 @@ const version = ref(0);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const unschedulingId = ref<string | null>(null);
+const pendingUnscheduleId = ref<string | null>(null);
 const admin = useAdmin();
 
 async function load() {
@@ -36,8 +37,17 @@ async function load() {
   }
 }
 
-async function doUnschedule(requestId: string) {
-  if (!confirm('确定取消排期？')) return;
+function requestUnschedule(requestId: string) {
+  pendingUnscheduleId.value = requestId;
+}
+
+function closeUnscheduleDialog() {
+  if (!unschedulingId.value) pendingUnscheduleId.value = null;
+}
+
+async function doUnschedule() {
+  const requestId = pendingUnscheduleId.value;
+  if (!requestId) return;
   unschedulingId.value = requestId;
   try {
     const result = await unscheduleRequest(requestId, version.value);
@@ -47,6 +57,7 @@ async function doUnschedule(requestId: string) {
     error.value = e.message ?? '操作失败';
   } finally {
     unschedulingId.value = null;
+    pendingUnscheduleId.value = null;
   }
 }
 
@@ -85,6 +96,13 @@ const playbackLabels = {
   DOWNLOADED: '已下载',
   PLAYED: '已播放',
   PLAYBACK_ERROR: '播放异常',
+};
+
+const playbackStatusClasses = {
+  PENDING_DOWNLOAD: 'border border-amber-200 bg-amber-50 text-amber-800',
+  DOWNLOADED: 'border border-blue-200 bg-blue-50 text-blue-700',
+  PLAYED: 'border border-green-200 bg-green-50 text-green-700',
+  PLAYBACK_ERROR: 'border border-red-300 bg-red-50 font-medium text-red-700',
 };
 
 function prevDay() {
@@ -272,9 +290,12 @@ onMounted(load);
                 {{ song.playTime }} · {{ song.artist }} · {{ formatDuration(song.durationMs) }}
               </p>
             </div>
-            <span class="rounded bg-paper-deep/40 px-2 py-1 text-xs">{{
-              playbackLabels[song.playbackStatus]
-            }}</span>
+            <span
+              class="rounded px-2 py-1 text-xs"
+              :class="playbackStatusClasses[song.playbackStatus]"
+            >
+              {{ playbackLabels[song.playbackStatus] }}
+            </span>
             <button
               v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
               class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
@@ -287,7 +308,7 @@ onMounted(load);
                 (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
                 song.playbackStatus === 'PENDING_DOWNLOAD'
               "
-              class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
+              class="shrink-0 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700 hover:bg-blue-100"
               @click="setPlaybackStatus(song.id, 'DOWNLOADED')"
             >
               标为已下载
@@ -297,7 +318,7 @@ onMounted(load);
                 (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
                 song.playbackStatus === 'PLAYBACK_ERROR'
               "
-              class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
+              class="shrink-0 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs text-amber-800 hover:bg-amber-100"
               @click="setPlaybackStatus(song.id, 'PENDING_DOWNLOAD')"
             >
               恢复待下载
@@ -305,9 +326,9 @@ onMounted(load);
             <button
               v-if="
                 (admin.me?.role === 'TECHNICIAN' || admin.isSuper) &&
-                song.playbackStatus !== 'PLAYED'
+                (song.playbackStatus === 'PENDING_DOWNLOAD' || song.playbackStatus === 'DOWNLOADED')
               "
-              class="shrink-0 rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600"
+              class="shrink-0 rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50"
               @click="setPlaybackStatus(song.id, 'PLAYBACK_ERROR')"
             >
               异常
@@ -326,7 +347,7 @@ onMounted(load);
               v-if="admin.me?.role === 'PLANNER' || admin.isSuper"
               class="shrink-0 rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
               :disabled="unschedulingId === song.id"
-              @click="doUnschedule(song.id)"
+              @click="requestUnschedule(song.id)"
             >
               {{ unschedulingId === song.id ? '撤回中…' : '撤回排期' }}
             </button>
@@ -345,5 +366,47 @@ onMounted(load);
         >
       </div>
     </div>
+
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="pendingUnscheduleId"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          @click.self="closeUnscheduleDialog"
+        >
+          <div class="w-full max-w-sm rounded-xl border border-rule bg-paper p-5 shadow-xl">
+            <h2 class="text-base font-bold" style="font-family: var(--font-display)">
+              确认取消排期
+            </h2>
+            <p class="mt-2 text-sm leading-6 text-ink-faint">
+              取消后，歌曲会返回待审核状态，需要重新安排播出时段。
+            </p>
+            <div class="mt-5 flex justify-end gap-3">
+              <button
+                class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-soft hover:border-ink-faint disabled:opacity-50"
+                :disabled="Boolean(unschedulingId)"
+                @click="closeUnscheduleDialog"
+              >
+                取消
+              </button>
+              <button
+                class="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 hover:bg-red-100 disabled:opacity-50"
+                :disabled="Boolean(unschedulingId)"
+                @click="doUnschedule"
+              >
+                {{ unschedulingId ? '取消中…' : '确认取消排期' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
