@@ -61,6 +61,12 @@ async function submit(): Promise<void> {
       <button type="submit" class="btn-primary w-full py-2.5" :disabled="busy">
         {{ busy ? '登录中…' : '登录' }}
       </button>
+      <NuxtLink
+        to="/admin/reset-password"
+        class="block text-center text-sm text-ink-soft hover:text-ink"
+      >
+        忘记密码？
+      </NuxtLink>
     </form>
   </div>
 </template>

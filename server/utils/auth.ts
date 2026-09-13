@@ -180,6 +180,19 @@ export async function changePassword(
   revokeUserSessions(userId);
 }
 
+export async function resetPassword(userId: string, newPassword: string): Promise<void> {
+  assertPassword(newPassword);
+  await db
+    .update(adminUser)
+    .set({
+      passwordHash: hashPassword(newPassword),
+      mustChangePassword: 0,
+      sessionVersion: sql`${adminUser.sessionVersion} + 1`,
+    })
+    .where(eq(adminUser.id, userId));
+  revokeUserSessions(userId);
+}
+
 export async function createAdminUser(
   username: string,
   password: string,

@@ -86,6 +86,19 @@ export const emailVerification = table('EmailVerification', {
     .default(sql`unixepoch()`),
 });
 
+export const passwordReset = table('PasswordReset', {
+  id: text('id').primaryKey(),
+  userId: text('userId').notNull(),
+  codeHash: text('codeHash').notNull(),
+  ipHash: text('ipHash').notNull(),
+  expiresAt: integer('expiresAt').notNull(),
+  usedAt: integer('usedAt'),
+  attempts: integer('attempts').notNull().default(0),
+  createdAt: integer('createdAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+});
+
 export const adminSession = table('AdminSession', {
   id: text('id').primaryKey(),
   tokenHash: text('tokenHash').notNull().unique(),

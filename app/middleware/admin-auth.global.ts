@@ -1,6 +1,11 @@
 import { useAdmin } from '~/stores/admin';
 
-const EXEMPT_PATHS = ['/admin/login', '/admin/password', '/admin/bind-email'];
+const EXEMPT_PATHS = [
+  '/admin/login',
+  '/admin/password',
+  '/admin/bind-email',
+  '/admin/reset-password',
+];
 
 /**
  * Global middleware: redirect unauthenticated users to /admin/login
@@ -8,7 +13,7 @@ const EXEMPT_PATHS = ['/admin/login', '/admin/password', '/admin/bind-email'];
  * Also enforces mustChangePassword and mustBindEmail redirects.
  */
 export default defineNuxtRouteMiddleware(async (to) => {
-  if (!to.path.startsWith('/admin') || to.path === '/admin/login') return;
+  if (!to.path.startsWith('/admin') || EXEMPT_PATHS.includes(to.path)) return;
 
   const admin = useAdmin();
 
