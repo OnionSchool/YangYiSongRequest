@@ -50,6 +50,8 @@ export const useAdmin = defineStore('admin', () => {
       method: 'POST',
       body: JSON.stringify({ current, next }),
     });
+    me.value = null;
+    setCsrfToken(null);
   }
 
   async function switchDebugRole(role: AdminUser['role']) {

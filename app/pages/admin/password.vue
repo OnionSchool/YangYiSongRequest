@@ -32,8 +32,7 @@ async function submit() {
   busy.value = true;
   try {
     await admin.changePassword(current.value, next.value);
-    await admin.logout();
-    await router.push('/admin/login');
+    await router.replace('/admin/login');
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : '修改失败';
   } finally {

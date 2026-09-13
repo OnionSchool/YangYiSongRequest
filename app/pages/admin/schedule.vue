@@ -19,6 +19,9 @@ const slots = ref<AdminDaySlot[]>([]);
 const version = ref(0);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const downloadNotice = ref<string | null>(null);
+const downloadingSongId = ref<string | null>(null);
+const downloadingDay = ref(false);
 const unschedulingId = ref<string | null>(null);
 const pendingUnscheduleId = ref<string | null>(null);
 const admin = useAdmin();
@@ -75,19 +78,31 @@ async function setPlaybackStatus(
 
 async function downloadSongFile(id: string) {
   error.value = null;
+  downloadNotice.value = '正在准备音频，首次下载可能需要一点时间…';
+  downloadingSongId.value = id;
   try {
     await downloadSong(id);
+    downloadNotice.value = '音频已开始下载。';
   } catch (e: any) {
     error.value = e.message ?? '下载失败';
+    downloadNotice.value = null;
+  } finally {
+    downloadingSongId.value = null;
   }
 }
 
 async function downloadDayFile() {
   error.value = null;
+  downloadNotice.value = '正在准备当天音频和 ZIP 文件，请勿关闭此页面…';
+  downloadingDay.value = true;
   try {
     await downloadDayZip(selectedDate.value);
+    downloadNotice.value = '当天 ZIP 已开始下载。';
   } catch (e: any) {
     error.value = e.message ?? '下载失败';
+    downloadNotice.value = null;
+  } finally {
+    downloadingDay.value = false;
   }
 }
 
@@ -166,10 +181,11 @@ onMounted(load);
       </button>
       <button
         v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
-        class="ml-auto rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint"
+        class="ml-auto rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint disabled:cursor-wait disabled:opacity-60"
+        :disabled="downloadingDay"
         @click="downloadDayFile"
       >
-        下载当天 ZIP
+        {{ downloadingDay ? '正在准备 ZIP…' : '下载当天 ZIP' }}
       </button>
       <div class="paper-card flex items-center gap-3 px-4 py-2">
         <svg
@@ -233,6 +249,16 @@ onMounted(load);
       class="mb-4 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
     >
       {{ error }}
+    </div>
+    <div
+      v-if="downloadNotice"
+      class="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"
+    >
+      <span
+        v-if="downloadingSongId || downloadingDay"
+        class="h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700"
+      />
+      {{ downloadNotice }}
     </div>
 
     <!-- Loading -->
@@ -298,10 +324,11 @@ onMounted(load);
             </span>
             <button
               v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
-              class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs"
+              class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs disabled:cursor-wait disabled:opacity-60"
+              :disabled="Boolean(downloadingSongId) || downloadingDay"
               @click="downloadSongFile(song.id)"
             >
-              下载
+              {{ downloadingSongId === song.id ? '准备中…' : '下载' }}
             </button>
             <button
               v-if="

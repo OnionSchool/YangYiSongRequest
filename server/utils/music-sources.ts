@@ -324,7 +324,13 @@ async function metingRedirect(
         : null;
       if (response.status >= 300 && response.status < 400 && url) return url;
       logError('Meting 未返回音频重定向地址', undefined, {
-        meting: { api: metingApiAddress(api.baseUrl), source, capability, platformId: params.id },
+        meting: {
+          api: metingApiAddress(api.baseUrl),
+          source,
+          capability,
+          platformId: params.id,
+          statusCode: response.status,
+        },
       });
     } catch (error) {
       logError('Meting 音频重定向请求失败', error, {
