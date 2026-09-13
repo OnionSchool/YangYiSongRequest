@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHmac } from 'node:crypto';
 import { promisify } from 'node:util';
 import { asc, eq } from 'drizzle-orm';
 import { db } from './db';
@@ -126,6 +127,11 @@ export interface MetingApiConfig {
   capabilities: MetingCapability[];
   enabled: boolean;
   sortOrder: number;
+  authConfigured: boolean;
+}
+
+interface MetingApiWithAuth extends Omit<MetingApiConfig, 'authConfigured'> {
+  authToken: string | null;
 }
 
 function parseCapabilities(value: string | null | undefined): MetingCapability[] {
@@ -149,7 +155,7 @@ function parseCapabilities(value: string | null | undefined): MetingCapability[]
 async function getApisForSource(
   source: SourceId,
   capability: MetingCapability
-): Promise<MetingApiConfig[]> {
+): Promise<MetingApiWithAuth[]> {
   const rows = await db
     .select()
     .from(metingApi)
@@ -165,6 +171,7 @@ async function getApisForSource(
       capabilities: parseCapabilities(row.capabilities),
       enabled: true,
       sortOrder: row.sortOrder,
+      authToken: row.authToken,
     }))
     .filter((api) => api.platforms.includes(source) && api.capabilities.includes(capability));
 }
@@ -184,6 +191,7 @@ export async function listMetingApis(): Promise<MetingApiConfig[]> {
     capabilities: parseCapabilities(row.capabilities),
     enabled: row.enabled === 1,
     sortOrder: row.sortOrder,
+    authConfigured: Boolean(row.authToken),
   }));
 }
 
@@ -221,7 +229,8 @@ interface MetingPicture {
 async function validExternalUrl(value: string | null): Promise<string | null> {
   if (!value) return null;
   try {
-    return (await validateExternalUrl(value)).toString();
+    const host = new URL(value).hostname;
+    return (await validateExternalUrl(value, [host])).toString();
   } catch {
     return null;
   }
@@ -243,21 +252,29 @@ function assertUsableMetingResponse(
 }
 
 function metingRequestUrl(
-  baseUrl: string,
+  api: MetingApiWithAuth,
   source: SourceId,
   params: Record<string, string>
 ): string {
-  const base = baseUrl.replace(/\/+$/, '');
-  const query = new URLSearchParams({ server: toMetingServer(source), ...params });
-  return `${base}?${query}`;
+  const url = new URL(api.baseUrl);
+  const server = toMetingServer(source);
+  url.searchParams.set('server', server);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  if (api.authToken && ['url', 'lrc', 'pic'].includes(params.type)) {
+    url.searchParams.set(
+      'auth',
+      createHmac('sha1', api.authToken).update(`${server}${params.type}${params.id}`).digest('hex')
+    );
+  }
+  return url.toString();
 }
 
 async function metingFetchRaw<T>(
-  baseUrl: string,
+  api: MetingApiWithAuth,
   source: SourceId,
   params: Record<string, string>
 ): Promise<T> {
-  const target = metingRequestUrl(baseUrl, source, params);
+  const target = metingRequestUrl(api, source, params);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -287,7 +304,7 @@ async function metingRedirect(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
     try {
-      const response = await fetchExternal(metingRequestUrl(api.baseUrl, source, params), {
+      const response = await fetchExternal(metingRequestUrl(api, source, params), {
         signal: controller.signal,
         redirect: 'manual',
       });
@@ -318,7 +335,7 @@ async function metingFetch<T>(
   let lastError: unknown;
   for (const api of apis) {
     try {
-      return await metingFetchRaw<T>(api.baseUrl, source, params);
+      return await metingFetchRaw<T>(api, source, params);
     } catch (error) {
       lastError = error;
     }

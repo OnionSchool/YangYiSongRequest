@@ -224,6 +224,17 @@ export interface MetingApiRow {
   capabilities: MetingCapability[];
   enabled: boolean;
   sortOrder: number;
+  authConfigured: boolean;
+}
+
+export interface MetingApiInput {
+  name: string;
+  baseUrl: string;
+  authToken?: string;
+  platforms: SourceId[];
+  capabilities: MetingCapability[];
+  enabled: boolean;
+  sortOrder: number;
 }
 
 export interface AdminUserRow {
@@ -299,14 +310,15 @@ export const saveDownloadTemplates = (templates: DownloadTemplates) =>
   put<{ templates: DownloadTemplates }>('/api/admin/config/downloads', { templates });
 export const checkSources = () => apiFetch<SourceHealthRow[]>('/api/admin/sources/health');
 export const readMetingApis = () => apiFetch<{ items: MetingApiRow[] }>('/api/admin/meting');
-export const createMetingApi = (body: Omit<MetingApiRow, 'id'>) =>
+export const createMetingApi = (body: MetingApiInput) =>
   post<{ items: MetingApiRow[] }>('/api/admin/meting', body);
-export const updateMetingApi = (id: string, body: Partial<Omit<MetingApiRow, 'id'>>) =>
+export const updateMetingApi = (id: string, body: Partial<MetingApiInput>) =>
   put<{ items: MetingApiRow[] }>(`/api/admin/meting/${encodeURIComponent(id)}`, body);
 export const deleteMetingApi = (id: string) =>
   apiFetch<{ ok: true }>(`/api/admin/meting/${encodeURIComponent(id)}`, { method: 'DELETE' });
 export const testMetingApi = (body: {
   baseUrl: string;
+  authToken?: string;
   platforms: SourceId[];
   capabilities: MetingCapability[];
 }) =>

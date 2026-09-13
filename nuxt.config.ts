@@ -11,7 +11,7 @@ export default defineNuxtConfig({
     serverAssets: [
       {
         baseName: 'migrations',
-        dir: './server/migrations',
+        dir: '../server/migrations',
       },
     ],
   },

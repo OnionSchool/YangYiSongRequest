@@ -34,6 +34,7 @@ export default defineEventHandler(async (event) => {
   const enabled = body.enabled !== false;
   const sortOrder = typeof body.sortOrder === 'number' ? body.sortOrder : 0;
   const capabilities = validCapabilities(body.capabilities);
+  const authToken = typeof body.authToken === 'string' ? body.authToken.trim() : '';
 
   if (!name) throw badRequest('BAD_NAME', '请填写 API 名称');
   if (!baseUrl) throw badRequest('BAD_URL', '请填写 API 地址');
@@ -49,12 +50,14 @@ export default defineEventHandler(async (event) => {
   if (capabilities.length === 0) {
     throw badRequest('BAD_CAPABILITIES', '至少选择一个 API 功能');
   }
+  if (authToken.length > 512) throw badRequest('BAD_AUTH_TOKEN', '鉴权密钥长度不能超过 512 个字符');
 
   const id = `meting_${randomBytes(8).toString('hex')}`;
   await db.insert(metingApi).values({
     id,
     name,
     baseUrl,
+    authToken: authToken || null,
     platforms: JSON.stringify(validPlatforms),
     capabilities: JSON.stringify(capabilities),
     enabled: enabled ? 1 : 0,
@@ -62,6 +65,11 @@ export default defineEventHandler(async (event) => {
   });
 
   invalidateMusicSearchCache();
-  await writeAudit(session.userId, 'meting.create', id, { name, baseUrl, capabilities });
+  await writeAudit(session.userId, 'meting.create', id, {
+    name,
+    baseUrl,
+    capabilities,
+    authConfigured: Boolean(authToken),
+  });
   return { items: await listMetingApis() };
 });

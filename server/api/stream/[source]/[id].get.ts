@@ -56,10 +56,14 @@ export default defineEventHandler(async (event) => {
   const release = acquireStream(ip);
   try {
     const range = event.node.req.headers.range;
-    const response = await fetchExternal(audioUrl, {
-      signal: controller.signal,
-      headers: range ? { range } : undefined,
-    });
+    const response = await fetchExternal(
+      audioUrl,
+      {
+        signal: controller.signal,
+        headers: range ? { range } : undefined,
+      },
+      [new URL(audioUrl).hostname]
+    );
     if (!response.ok || !response.body) {
       throw createError({ statusCode: 502, statusMessage: 'Audio fetch failed' });
     }

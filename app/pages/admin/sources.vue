@@ -32,6 +32,7 @@ const editingId = ref<string | null>(null);
 const newApi = ref({
   name: '',
   baseUrl: '',
+  authToken: '',
   platforms: ['netease', 'qq', 'kugou'] as SourceId[],
   capabilities: ['search', 'metadata', 'download'] as MetingCapability[],
   enabled: true,
@@ -69,6 +70,7 @@ function resetApiForm() {
   newApi.value = {
     name: '',
     baseUrl: '',
+    authToken: '',
     platforms: ['netease', 'qq', 'kugou'],
     capabilities: ['search', 'metadata', 'download'],
     enabled: true,
@@ -78,7 +80,15 @@ function resetApiForm() {
 
 function editApi(api: MetingApiRow) {
   editingId.value = api.id;
-  newApi.value = { ...api, platforms: [...api.platforms] };
+  newApi.value = {
+    name: api.name,
+    baseUrl: api.baseUrl,
+    authToken: '',
+    platforms: [...api.platforms],
+    capabilities: [...api.capabilities],
+    enabled: api.enabled,
+    sortOrder: api.sortOrder,
+  };
   apiMessage.value = null;
 }
 
@@ -116,6 +126,7 @@ async function testApi() {
     testResults.value = (
       await testMetingApi({
         baseUrl: newApi.value.baseUrl.trim(),
+        authToken: newApi.value.authToken.trim() || undefined,
         platforms: newApi.value.platforms,
         capabilities: newApi.value.capabilities,
       })
@@ -249,6 +260,19 @@ onMounted(load);
             placeholder="https://meting.example.com/api"
           />
         </label>
+        <label class="block">
+          <span class="text-sm font-medium">鉴权密钥（METING_TOKEN）</span>
+          <input
+            v-model="newApi.authToken"
+            type="password"
+            autocomplete="new-password"
+            class="mt-1.5 w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-mono focus:border-ink-faint focus:outline-none"
+            :placeholder="editingId ? '留空则保留当前密钥' : '按需填写'"
+          />
+          <span class="mt-1 block text-xs text-ink-faint">
+            用于 url、pic 和 lrc 请求的 HMAC-SHA1 签名，仅保存在服务端。
+          </span>
+        </label>
         <fieldset>
           <legend class="text-sm font-medium">支持的平台</legend>
           <div class="mt-2 flex flex-wrap gap-3">
@@ -357,6 +381,7 @@ onMounted(load);
                 >{{ api.enabled ? '已启用' : '已停用' }}</span
               >
               <span class="text-xs text-ink-faint">优先级 {{ api.sortOrder }}</span>
+              <span v-if="api.authConfigured" class="text-xs text-ink-faint">已配置鉴权</span>
             </div>
             <p class="mt-1 truncate font-mono text-sm text-ink-faint">{{ api.baseUrl }}</p>
             <p class="mt-2 text-sm text-ink-soft">

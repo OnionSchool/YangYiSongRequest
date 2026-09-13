@@ -217,6 +217,7 @@ export const metingApi = table('MetingApi', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   baseUrl: text('baseUrl').notNull(),
+  authToken: text('authToken'),
   platforms: text('platforms').notNull().default('["netease","qq","kugou"]'),
   capabilities: text('capabilities').notNull().default('["search","metadata","download"]'),
   enabled: integer('enabled').notNull().default(1),

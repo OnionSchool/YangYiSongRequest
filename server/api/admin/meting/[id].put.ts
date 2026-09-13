@@ -47,6 +47,13 @@ export default defineEventHandler(async (event) => {
     await validateExternalUrl(baseUrl, [baseUrlHost]);
     updates.baseUrl = baseUrl;
   }
+  if (typeof body.authToken === 'string') {
+    const authToken = body.authToken.trim();
+    if (authToken.length > 512) {
+      throw badRequest('BAD_AUTH_TOKEN', '鉴权密钥长度不能超过 512 个字符');
+    }
+    if (authToken) updates.authToken = authToken;
+  }
   if (Array.isArray(body.platforms)) {
     const validPlatforms = body.platforms.filter(
       (p: unknown) => typeof p === 'string' && VALID_PLATFORMS.includes(p)
@@ -75,6 +82,10 @@ export default defineEventHandler(async (event) => {
     invalidateMusicSearchCache();
   }
 
-  await writeAudit(session.userId, 'meting.update', id, updates);
+  const { authToken: _authToken, ...auditUpdates } = updates;
+  await writeAudit(session.userId, 'meting.update', id, {
+    ...auditUpdates,
+    authConfigured: typeof _authToken === 'string' || undefined,
+  });
   return { items: await listMetingApis() };
 });
