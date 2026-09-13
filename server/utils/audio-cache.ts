@@ -15,6 +15,7 @@ import { readDownloadTemplates } from './download-config';
 import { fetchAudioUrl } from './music-sources';
 import type { SourceId } from './domain';
 import { fetchExternal, validateExternalUrl } from './external-url';
+import { logError } from './logger';
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'audio-cache');
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -95,6 +96,8 @@ export function recordSystemAlert(
   message: string,
   detail?: unknown
 ): void {
+  if (level === 'error')
+    logError(message, undefined, detail as Record<string, unknown> | undefined);
   sqlite
     .prepare(
       'INSERT INTO "SystemAlert" ("id", "level", "message", "detail", "createdAt") VALUES (?, ?, ?, ?, unixepoch())'

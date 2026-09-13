@@ -1,6 +1,7 @@
 import { send, setResponseHeader, setResponseStatus } from 'h3';
 import { defineNitroErrorHandler } from 'nitropack/runtime';
 import { AppError } from './utils/errors';
+import { logError } from './utils/logger';
 
 function errorCode(statusCode: number): string {
   if (statusCode === 400) return 'BAD_REQUEST';
@@ -14,12 +15,15 @@ function errorCode(statusCode: number): string {
 
 /** Return the common JSON envelope for all API errors. */
 export default defineNitroErrorHandler((error, event, { defaultHandler }) => {
-  if (!event.path.startsWith('/api/')) return defaultHandler(error, event);
-
   const statusCode =
     typeof (error as { statusCode?: unknown }).statusCode === 'number'
       ? (error as { statusCode: number }).statusCode
       : 500;
+  if (statusCode >= 500) {
+    logError('请求处理失败', error, { method: event.method, path: event.path, statusCode });
+  }
+  if (!event.path.startsWith('/api/')) return defaultHandler(error, event);
+
   const appError = error instanceof AppError ? error : null;
   setResponseStatus(event, statusCode);
   setResponseHeader(event, 'content-type', 'application/json; charset=utf-8');

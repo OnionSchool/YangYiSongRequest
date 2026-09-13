@@ -24,7 +24,4 @@ export async function initializeDatabase(): Promise<void> {
 
   const generatedPassword = randomBytes(18).toString('base64url');
   await createAdminUser(username ?? 'admin', password ?? generatedPassword, 'SUPER');
-  if (!production) {
-    console.warn(`[DB] 已创建开发管理员：admin / ${password ?? generatedPassword}`);
-  }
 }
