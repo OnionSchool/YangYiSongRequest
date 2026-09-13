@@ -150,7 +150,8 @@ async function resolveDownloadUrl(source: string, platformId: string): Promise<U
   const metingUrl = await fetchAudioUrl(source as SourceId, platformId);
   if (metingUrl) {
     try {
-      return await validateExternalUrl(metingUrl);
+      const host = new URL(metingUrl).hostname;
+      return await validateExternalUrl(metingUrl, [host]);
     } catch {
       // invalid URL from Meting
     }
@@ -167,10 +168,14 @@ async function downloadAudio(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
   try {
-    const response = await fetchExternal(target, {
-      signal: controller.signal,
-      headers: { 'user-agent': 'CampusRadio/1.0' },
-    });
+    const response = await fetchExternal(
+      target,
+      {
+        signal: controller.signal,
+        headers: { 'user-agent': 'CampusRadio/1.0' },
+      },
+      [target.hostname]
+    );
     const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.toLowerCase() ?? '';
     const contentLength = Number(response.headers.get('content-length') ?? 0);
     if (
