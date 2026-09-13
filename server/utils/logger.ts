@@ -10,6 +10,11 @@ interface ErrorLogContext {
     capability?: string;
     platformId?: string;
     statusCode?: number;
+    hasLocationHeader?: boolean;
+    redirectCode?: string;
+    responseUrl?: string;
+    redirectStatus?: string;
+    redirectRuleRequired?: boolean;
   };
   [key: string]: unknown;
 }

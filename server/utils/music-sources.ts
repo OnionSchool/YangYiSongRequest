@@ -323,13 +323,18 @@ async function metingRedirect(
         ? await validExternalUrl(new URL(location, response.url).toString())
         : null;
       if (response.status >= 300 && response.status < 400 && url) return url;
-      logError('Meting 未返回音频重定向地址', undefined, {
+      logError('Meting 未收到3xx重定向', undefined, {
         meting: {
           api: metingApiAddress(api.baseUrl),
           source,
           capability,
           platformId: params.id,
           statusCode: response.status,
+          hasLocationHeader: Boolean(location),
+          redirectStatus:
+            response.status >= 300 && response.status < 400 ? 'expected' : 'unexpected',
+          redirectRuleRequired: !(response.status >= 300 && response.status < 400),
+          responseUrl: response.url,
         },
       });
     } catch (error) {
