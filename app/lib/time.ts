@@ -2,6 +2,7 @@
 const TZ = 'Asia/Shanghai';
 
 export function hhmm(date: Date): string {
+  if (!Number.isFinite(date.getTime())) return '--:--';
   return new Intl.DateTimeFormat('zh-CN', {
     timeZone: TZ,
     hour: '2-digit',
@@ -26,6 +27,7 @@ export function dateLabel(date: string): string {
 
 /** 浏览器本地 YYYY-MM-DD，用于用户侧日期选择与接口参数 */
 export function isoDate(date: Date): string {
+  if (!Number.isFinite(date.getTime())) return isoDate(new Date());
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');

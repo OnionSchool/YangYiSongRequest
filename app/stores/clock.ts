@@ -17,8 +17,10 @@ export const useServerClock = defineStore('serverClock', () => {
   async function sync(): Promise<void> {
     try {
       const info = await fetchServerInfo();
+      const serverTime = new Date(info.serverTime).getTime();
+      if (!Number.isFinite(serverTime)) throw new Error('服务器时间无效');
       version.value = info.version;
-      offsetMs.value = new Date(info.serverTime).getTime() - Date.now();
+      offsetMs.value = serverTime - Date.now();
       online.value = true;
     } catch {
       online.value = false;
