@@ -78,9 +78,10 @@ export const emailVerification = table('EmailVerification', {
   id: text('id').primaryKey(),
   userId: text('userId').notNull(),
   email: text('email').notNull(),
-  code: text('code').notNull(),
+  codeHash: text('codeHash').notNull(),
   expiresAt: integer('expiresAt').notNull(),
   usedAt: integer('usedAt'),
+  attempts: integer('attempts').notNull().default(0),
   createdAt: integer('createdAt')
     .notNull()
     .default(sql`unixepoch()`),

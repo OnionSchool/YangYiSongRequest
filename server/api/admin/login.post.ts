@@ -1,14 +1,25 @@
-import { createError, defineEventHandler, readBody, setHeader, setCookie } from 'h3';
+import {
+  createError,
+  defineEventHandler,
+  getRequestHeader,
+  getRequestURL,
+  readBody,
+  setCookie,
+  setHeader,
+} from 'h3';
 import { login } from '../../utils/auth';
 import { writeAudit } from '../../utils/audit';
 import { readSite } from '../../utils/site';
 import { getClientIp } from '../../utils/request-ip';
 import { setAuditContext } from '../../utils/audit';
-import { getRequestHeader } from 'h3';
 import { AppError } from '../../utils/errors';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
+
+  if (getRequestHeader(event, 'origin') !== getRequestURL(event).origin) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: '请求来源无效' });
+  }
 
   const { username, password } = await readBody(event);
 
@@ -46,6 +57,7 @@ export default defineEventHandler(async (event) => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
+    path: '/',
   });
 
   // Log the login

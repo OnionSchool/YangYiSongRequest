@@ -43,7 +43,12 @@ export default defineEventHandler(async (event) => {
     }
     throw error;
   }
-  await writeAudit(session.userId, 'user.update', id, updates);
+  await writeAudit(session.userId, 'user.update', id, {
+    role: updates.role,
+    disabled: updates.disabled,
+    displayName: updates.displayName,
+    passwordChanged: Boolean(updates.password),
+  });
 
   return { ok: true };
 });

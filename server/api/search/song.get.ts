@@ -1,5 +1,8 @@
 import { createError, defineEventHandler, getQuery, setHeader } from 'h3';
 import { isSourceId, searchSongs } from '../../utils/music-sources';
+import { getClientIp } from '../../utils/request-ip';
+import { consumePublicRateLimit } from '../../utils/public-rate-limit';
+import { SEARCH_RATE_LIMIT } from '../../utils/rate-limits';
 
 export default defineEventHandler(async (event) => {
   const query = getQuery(event);
@@ -22,6 +25,15 @@ export default defineEventHandler(async (event) => {
       message: '缺少 keyword 参数',
     });
   }
+  if (keyword.length > 100) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid keyword',
+      message: 'keyword 不能超过 100 个字符',
+    });
+  }
+
+  consumePublicRateLimit('search', getClientIp(event), SEARCH_RATE_LIMIT.max, 60);
 
   try {
     // Keep a short private browser cache; shared server caching protects Meting APIs.

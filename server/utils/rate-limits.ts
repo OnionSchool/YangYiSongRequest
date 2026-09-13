@@ -17,6 +17,11 @@ export const STREAM_RATE_LIMIT = {
   timeWindow: '1 minute',
 } as const;
 
+export const SEARCH_RATE_LIMIT = {
+  max: 30,
+  timeWindow: '1 minute',
+} as const;
+
 export const SONG_DOWNLOAD_RATE_LIMIT = {
   max: 60,
   timeWindow: '5 minutes',

@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, readBody, setHeader } from 'h3';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 import { requireAuth } from '../../../utils/admin-auth';
 import { db } from '../../../utils/db';
@@ -8,6 +8,10 @@ import { sendVerificationEmail, isSmtpConfigured } from '../../../utils/email';
 
 const CODE_TTL_SECONDS = 10 * 60; // 10 minutes
 const RATE_LIMIT_SECONDS = 60; // 1 code per minute
+
+function hashCode(code: string): string {
+  return createHash('sha256').update(`email-verification-code:${code}`).digest('hex');
+}
 
 function generateCode(): string {
   const n = randomBytes(4).readUInt32BE(0) % 1_000_000;
@@ -67,7 +71,7 @@ export default defineEventHandler(async (event) => {
     id,
     userId: session.userId,
     email: normalizedEmail,
-    code,
+    codeHash: hashCode(code),
     expiresAt: now + CODE_TTL_SECONDS,
   });
 
