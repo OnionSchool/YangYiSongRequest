@@ -8,6 +8,12 @@ export default defineNuxtConfig({
 
   nitro: {
     errorHandler: './server/error-handler.ts',
+    serverAssets: [
+      {
+        baseName: 'migrations',
+        dir: './server/migrations',
+      },
+    ],
   },
 
   // SPA 模式（与原有 Vite 部署方式一致）
@@ -46,6 +52,9 @@ export default defineNuxtConfig({
   app: {
     head: {
       title: '杨村一中校园广播电视台',
+      htmlAttrs: {
+        lang: 'zh-CN',
+      },
       meta: [
         { name: 'description', content: '在线点歌系统' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },

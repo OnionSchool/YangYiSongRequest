@@ -136,7 +136,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
   </p>
 
   <section class="mt-8">
-    <p class="eyebrow">搜索</p>
+    <h2 class="eyebrow">搜索</h2>
     <form class="mt-2.5 flex gap-2" @submit.prevent="search">
       <input
         v-model="keyword"
@@ -216,7 +216,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
   </section>
 
   <section class="halftone mt-8 rounded-card border border-rule p-5">
-    <p class="eyebrow">点歌规则</p>
+    <h2 class="eyebrow">点歌规则</h2>
     <ul class="mt-3 space-y-2 text-sm">
       <li v-if="site.requireIdentity">
         填年级、班级、姓名就行，不用注册。播出单上只显示歌，不显示是谁点的。

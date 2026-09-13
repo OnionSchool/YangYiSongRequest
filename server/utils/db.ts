@@ -2,6 +2,7 @@ import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import Database from 'better-sqlite3';
+import { useStorage } from 'nitropack/runtime';
 import * as schema from './schema.ts';
 
 const DB_PATH = process.env.DATABASE_URL
@@ -14,10 +15,16 @@ export const sqlite = new Database(DB_PATH);
 export const db = drizzle(sqlite, { schema });
 
 export async function runMigrations(): Promise<void> {
-  const migrationDir = path.join(process.cwd(), 'server', 'migrations');
-  const migrations = readdirSync(migrationDir)
+  const migrationStorage = useStorage('assets:migrations');
+  const bundledMigrations = (await migrationStorage.getKeys())
     .filter((name) => /^\d+_.+\.sql$/.test(name))
     .sort();
+  const migrations =
+    bundledMigrations.length > 0
+      ? bundledMigrations
+      : readdirSync(path.join(process.cwd(), 'server', 'migrations'))
+          .filter((name) => /^\d+_.+\.sql$/.test(name))
+          .sort();
 
   sqlite.exec('BEGIN EXCLUSIVE');
   try {
@@ -34,7 +41,11 @@ export async function runMigrations(): Promise<void> {
     const recordMigration = sqlite.prepare('INSERT INTO "SchemaMigration" ("name") VALUES (?)');
     for (const name of migrations) {
       if (applied.has(name)) continue;
-      sqlite.exec(readFileSync(path.join(migrationDir, name), 'utf8'));
+      const migration = bundledMigrations.includes(name)
+        ? await migrationStorage.getItem<string>(name)
+        : readFileSync(path.join(process.cwd(), 'server', 'migrations', name), 'utf8');
+      if (migration === null) throw new Error(`找不到迁移文件：${name}`);
+      sqlite.exec(migration);
       recordMigration.run(name);
     }
     sqlite.exec(`
