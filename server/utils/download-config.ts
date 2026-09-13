@@ -5,6 +5,13 @@ import { siteSetting } from './schema';
 
 const SOURCES: readonly SourceId[] = ['netease', 'qq', 'kugou'];
 const SETTING_PREFIX = 'downloadUrl.';
+const MODE_SETTING = 'downloadMode';
+
+export type DownloadMode = 'direct' | 'proxy';
+
+export function parseDownloadMode(value: string | undefined): DownloadMode {
+  return value === 'direct' ? 'direct' : 'proxy';
+}
 
 export async function readDownloadTemplates(): Promise<Record<SourceId, string>> {
   const rows = await db.select().from(siteSetting);
@@ -24,5 +31,23 @@ export async function saveDownloadTemplates(templates: Record<SourceId, string>)
     } else {
       await db.insert(siteSetting).values({ key, value });
     }
+  }
+}
+
+export async function readDownloadMode(): Promise<DownloadMode> {
+  const row = await db.select().from(siteSetting).where(eq(siteSetting.key, MODE_SETTING)).limit(1);
+  return parseDownloadMode(row[0]?.value);
+}
+
+export async function saveDownloadMode(mode: DownloadMode): Promise<void> {
+  const existing = await db
+    .select()
+    .from(siteSetting)
+    .where(eq(siteSetting.key, MODE_SETTING))
+    .limit(1);
+  if (existing.length) {
+    await db.update(siteSetting).set({ value: mode }).where(eq(siteSetting.key, MODE_SETTING));
+  } else {
+    await db.insert(siteSetting).values({ key: MODE_SETTING, value: mode });
   }
 }

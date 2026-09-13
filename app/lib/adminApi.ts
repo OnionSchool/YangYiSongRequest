@@ -304,10 +304,14 @@ export const saveScheduleRules = (weekly: ScheduleRule[], overrides: ScheduleRul
   put<{ ok: true }>('/api/admin/config/schedule-rules', { weekly, overrides });
 
 export type DownloadTemplates = Record<SourceId, string>;
+export type DownloadMode = 'direct' | 'proxy';
 export const readDownloadTemplates = () =>
-  apiFetch<{ templates: DownloadTemplates }>('/api/admin/config/downloads');
-export const saveDownloadTemplates = (templates: DownloadTemplates) =>
-  put<{ templates: DownloadTemplates }>('/api/admin/config/downloads', { templates });
+  apiFetch<{ templates: DownloadTemplates; mode: DownloadMode }>('/api/admin/config/downloads');
+export const saveDownloadTemplates = (templates: DownloadTemplates, mode: DownloadMode) =>
+  put<{ templates: DownloadTemplates; mode: DownloadMode }>('/api/admin/config/downloads', {
+    templates,
+    mode,
+  });
 export const checkSources = () => apiFetch<SourceHealthRow[]>('/api/admin/sources/health');
 export const readMetingApis = () => apiFetch<{ items: MetingApiRow[] }>('/api/admin/meting');
 export const createMetingApi = (body: MetingApiInput) =>
@@ -392,6 +396,18 @@ async function downloadFile(path: string, fallbackName: string): Promise<void> {
 
 export const downloadSong = (id: string) =>
   downloadFile(`/api/admin/download/song/${id}`, 'audio.mp3');
+export async function downloadSongDirect(id: string): Promise<void> {
+  const link = await apiFetch<{ url: string; fileName: string }>(
+    `/api/admin/download/song/${encodeURIComponent(id)}/link`
+  );
+  const anchor = document.createElement('a');
+  anchor.href = link.url;
+  anchor.download = link.fileName;
+  anchor.rel = 'noopener';
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
 export const downloadDayZip = (date: string, slotId?: string) =>
   downloadFile(
     `/api/admin/download/day/${date}${slotId ? `?slotId=${encodeURIComponent(slotId)}` : ''}`,

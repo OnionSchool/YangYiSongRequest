@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import {
   readDay,
   unscheduleRequest,
   updatePlaybackStatus,
   downloadDayZip,
+  downloadSongDirect,
   downloadSong,
+  readDownloadTemplates,
+  type DownloadMode,
   type AdminDaySlot,
 } from '~/lib/adminApi';
 import { useAdmin } from '~/stores/admin';
@@ -22,6 +25,10 @@ const error = ref<string | null>(null);
 const downloadNotice = ref<string | null>(null);
 const downloadingSongId = ref<string | null>(null);
 const downloadingDay = ref(false);
+const downloadingBatch = ref(false);
+const selectedSongIds = ref<string[]>([]);
+const batchProgress = ref<{ current: number; total: number } | null>(null);
+const downloadMode = ref<DownloadMode>('proxy');
 const unschedulingId = ref<string | null>(null);
 const pendingUnscheduleId = ref<string | null>(null);
 const admin = useAdmin();
@@ -33,6 +40,7 @@ async function load() {
     const day = await readDay(selectedDate.value);
     slots.value = day.slots;
     version.value = day.version;
+    selectedSongIds.value = [];
   } catch (e: any) {
     error.value = e.message ?? '加载失败';
   } finally {
@@ -81,13 +89,44 @@ async function downloadSongFile(id: string) {
   downloadNotice.value = '正在准备音频，首次下载可能需要一点时间…';
   downloadingSongId.value = id;
   try {
-    await downloadSong(id);
+    if (downloadMode.value === 'direct') {
+      await downloadSongDirect(id);
+    } else {
+      await downloadSong(id);
+    }
     downloadNotice.value = '音频已开始下载。';
   } catch (e: any) {
     error.value = e.message ?? '下载失败';
     downloadNotice.value = null;
   } finally {
     downloadingSongId.value = null;
+  }
+}
+
+async function downloadSelectedSongs() {
+  const ids = [...selectedSongIds.value];
+  if (!ids.length) return;
+
+  error.value = null;
+  downloadingBatch.value = true;
+  try {
+    for (const [index, id] of ids.entries()) {
+      batchProgress.value = { current: index + 1, total: ids.length };
+      downloadNotice.value = `正在准备第 ${index + 1}/${ids.length} 首音频…`;
+      if (downloadMode.value === 'direct') {
+        await downloadSongDirect(id);
+      } else {
+        await downloadSong(id);
+      }
+    }
+    downloadNotice.value = `${ids.length} 首音频已开始下载。`;
+    selectedSongIds.value = [];
+  } catch (e: any) {
+    error.value = e.message ?? '下载失败';
+    downloadNotice.value = null;
+  } finally {
+    downloadingBatch.value = false;
+    batchProgress.value = null;
   }
 }
 
@@ -120,6 +159,21 @@ const playbackStatusClasses = {
   PLAYBACK_ERROR: 'border border-red-300 bg-red-50 font-medium text-red-700',
 };
 
+const canDownload = computed(() => admin.me?.role === 'TECHNICIAN' || admin.isSuper);
+const allSongIds = computed(() => slots.value.flatMap((slot) => slot.songs.map((song) => song.id)));
+const allSongsSelected = computed(
+  () =>
+    allSongIds.value.length > 0 &&
+    allSongIds.value.every((id) => selectedSongIds.value.includes(id))
+);
+const isDownloading = computed(
+  () => Boolean(downloadingSongId.value) || downloadingDay.value || downloadingBatch.value
+);
+
+function toggleAllSongs() {
+  selectedSongIds.value = allSongsSelected.value ? [] : [...allSongIds.value];
+}
+
 function prevDay() {
   selectedDate.value = shiftDate(selectedDate.value, -1);
   load();
@@ -150,7 +204,14 @@ function dateLabel(d: string) {
   return weekday[dt.getDay()];
 }
 
-onMounted(load);
+onMounted(async () => {
+  await load();
+  try {
+    downloadMode.value = (await readDownloadTemplates()).mode;
+  } catch {
+    downloadMode.value = 'proxy';
+  }
+});
 </script>
 
 <template>
@@ -180,12 +241,32 @@ onMounted(load);
         </svg>
       </button>
       <button
-        v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
+        v-if="canDownload"
         class="ml-auto rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint disabled:cursor-wait disabled:opacity-60"
-        :disabled="downloadingDay"
+        :disabled="isDownloading"
         @click="downloadDayFile"
       >
         {{ downloadingDay ? '正在准备 ZIP…' : '下载当天 ZIP' }}
+      </button>
+      <button
+        v-if="canDownload"
+        class="rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint disabled:cursor-wait disabled:opacity-60"
+        :disabled="isDownloading || !selectedSongIds.length"
+        @click="downloadSelectedSongs"
+      >
+        {{
+          downloadingBatch && batchProgress
+            ? `正在下载 ${batchProgress.current}/${batchProgress.total}`
+            : `下载已选 ${selectedSongIds.length} 首`
+        }}
+      </button>
+      <button
+        v-if="canDownload && allSongIds.length"
+        class="rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint disabled:cursor-wait disabled:opacity-60"
+        :disabled="isDownloading"
+        @click="toggleAllSongs"
+      >
+        {{ allSongsSelected ? '取消全选' : '全选歌曲' }}
       </button>
       <div class="paper-card flex items-center gap-3 px-4 py-2">
         <svg
@@ -255,7 +336,7 @@ onMounted(load);
       class="mb-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800"
     >
       <span
-        v-if="downloadingSongId || downloadingDay"
+        v-if="isDownloading"
         class="h-3 w-3 animate-spin rounded-full border-2 border-blue-300 border-t-blue-700"
       />
       {{ downloadNotice }}
@@ -309,6 +390,15 @@ onMounted(load);
             :key="song.id"
             class="flex items-center gap-3 px-5 py-3 hover:bg-paper-deep/10 transition-colors"
           >
+            <input
+              v-if="canDownload"
+              v-model="selectedSongIds"
+              :value="song.id"
+              type="checkbox"
+              class="h-4 w-4 shrink-0 accent-orange-deep"
+              :disabled="isDownloading"
+              :aria-label="`选择《${song.title}》`"
+            />
             <span class="w-6 text-center text-sm font-mono text-ink-faint">{{ index + 1 }}</span>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-medium">{{ song.title }}</p>
@@ -323,9 +413,9 @@ onMounted(load);
               {{ playbackLabels[song.playbackStatus] }}
             </span>
             <button
-              v-if="admin.me?.role === 'TECHNICIAN' || admin.isSuper"
+              v-if="canDownload"
               class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs disabled:cursor-wait disabled:opacity-60"
-              :disabled="Boolean(downloadingSongId) || downloadingDay"
+              :disabled="isDownloading"
               @click="downloadSongFile(song.id)"
             >
               {{ downloadingSongId === song.id ? '准备中…' : '下载' }}

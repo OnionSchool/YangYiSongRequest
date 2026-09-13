@@ -10,6 +10,7 @@ import {
   testMetingApi,
   updateMetingApi,
   type DownloadTemplates,
+  type DownloadMode,
   type MetingApiRow,
   type MetingCapability,
   type SourceHealthRow,
@@ -26,6 +27,7 @@ const saving = ref(false);
 const testing = ref(false);
 const testResults = ref<Array<{ source: SourceId; ok: boolean; detail: string }> | null>(null);
 const templates = ref<DownloadTemplates>({ netease: '', qq: '', kugou: '' });
+const downloadMode = ref<DownloadMode>('proxy');
 const configMessage = ref<string | null>(null);
 const apiMessage = ref<string | null>(null);
 const editingId = ref<string | null>(null);
@@ -60,7 +62,10 @@ async function load() {
     readMetingApis(),
   ]);
   sources.value = health.status === 'fulfilled' ? health.value : [];
-  if (downloadConfig.status === 'fulfilled') templates.value = downloadConfig.value.templates;
+  if (downloadConfig.status === 'fulfilled') {
+    templates.value = downloadConfig.value.templates;
+    downloadMode.value = downloadConfig.value.mode;
+  }
   if (metingConfig.status === 'fulfilled') apis.value = metingConfig.value.items;
   loading.value = false;
 }
@@ -187,7 +192,9 @@ async function removeApi(api: MetingApiRow) {
 async function saveDownloads() {
   configMessage.value = null;
   try {
-    templates.value = (await saveDownloadTemplates(templates.value)).templates;
+    const config = await saveDownloadTemplates(templates.value, downloadMode.value);
+    templates.value = config.templates;
+    downloadMode.value = config.mode;
     configMessage.value = '已保存';
   } catch (error: any) {
     configMessage.value = error.message ?? '保存失败';
@@ -439,11 +446,35 @@ onMounted(load);
 
       <section class="paper-card p-5 space-y-4">
         <div>
-          <h2 class="font-medium">自定义下载地址（可选）</h2>
+          <h2 class="font-medium">下载方式与自定义地址</h2>
           <p class="mt-1 text-sm text-ink-faint">
             使用 <code>{id}</code> 替换歌曲标识；留空时通过可用的 Meting API 获取音频链接。
           </p>
         </div>
+        <fieldset>
+          <legend class="text-sm font-medium">下载方式</legend>
+          <div class="mt-2 grid gap-3 sm:grid-cols-2">
+            <label class="rounded-lg border border-rule p-3 text-sm">
+              <span class="flex items-center gap-2 font-medium">
+                <input v-model="downloadMode" type="radio" value="direct" />
+                直接下载链接
+              </span>
+              <span class="mt-1 block text-xs text-ink-faint">
+                已缓存歌曲直接返回缓存文件；未缓存歌曲跳转至音源原始链接。
+              </span>
+            </label>
+            <label class="rounded-lg border border-rule p-3 text-sm">
+              <span class="flex items-center gap-2 font-medium">
+                <input v-model="downloadMode" type="radio" value="proxy" />
+                服务器代理下载
+              </span>
+              <span class="mt-1 block text-xs text-ink-faint">
+                服务器拉取并缓存音频后返回文件，适合需要统一下载行为的场景。
+              </span>
+            </label>
+          </div>
+          <p class="mt-2 text-xs text-ink-faint">当天 ZIP 需要合并多首歌曲，始终由服务器生成。</p>
+        </fieldset>
         <label v-for="platform in platformOptions" :key="platform.id" class="block">
           <span class="text-sm font-medium">{{ platform.label }}</span>
           <input

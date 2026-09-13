@@ -80,6 +80,12 @@ export interface CachedAudio {
   fileName: string;
 }
 
+export interface DownloadLink {
+  url: string;
+  fileName: string;
+  cached: boolean;
+}
+
 function safeFileName(value: string): string {
   return (
     value
@@ -254,6 +260,30 @@ export async function getRequestAudio(requestId: string): Promise<CachedAudio> {
     });
     throw error;
   }
+}
+
+export async function getRequestDownloadLink(requestId: string): Promise<DownloadLink> {
+  const request = await db.select().from(songRequest).where(eq(songRequest.id, requestId)).limit(1);
+  if (!request[0]) throw notFound('REQUEST_NOT_FOUND', '找不到点歌记录');
+
+  const cached = await db
+    .select({ requestId: audioCacheObject.requestId })
+    .from(audioCacheObject)
+    .where(eq(audioCacheObject.requestId, requestId))
+    .limit(1);
+  if (cached[0]) {
+    return {
+      url: `/api/admin/download/song/${encodeURIComponent(requestId)}`,
+      fileName: `${safeFileName(request[0].title)}.mp3`,
+      cached: true,
+    };
+  }
+
+  return {
+    url: (await resolveDownloadUrl(request[0].source, request[0].platformId)).toString(),
+    fileName: `${safeFileName(request[0].title)}.mp3`,
+    cached: false,
+  };
 }
 
 export async function removeCachedAudio(requestId: string): Promise<void> {
