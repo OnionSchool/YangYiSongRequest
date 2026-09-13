@@ -3,6 +3,14 @@ import { defineNitroErrorHandler } from 'nitropack/runtime';
 import { AppError } from './utils/errors';
 import { logError } from './utils/logger';
 
+function metingContext(error: unknown): { api: string; source?: string } | undefined {
+  const data = (error as { data?: unknown }).data;
+  if (!data || typeof data !== 'object') return undefined;
+  const { metingApi, source } = data as { metingApi?: unknown; source?: unknown };
+  if (typeof metingApi !== 'string') return undefined;
+  return { api: metingApi, ...(typeof source === 'string' ? { source } : {}) };
+}
+
 function errorCode(statusCode: number): string {
   if (statusCode === 400) return 'BAD_REQUEST';
   if (statusCode === 401) return 'UNAUTHORIZED';
@@ -20,7 +28,11 @@ export default defineNitroErrorHandler((error, event, { defaultHandler }) => {
       ? (error as { statusCode: number }).statusCode
       : 500;
   if (statusCode >= 500) {
-    logError('请求处理失败', error, { method: event.method, path: event.path, statusCode });
+    const meting = metingContext(error);
+    logError('请求处理失败', error, {
+      request: { method: event.method, path: event.path, statusCode },
+      ...(meting ? { meting } : {}),
+    });
   }
   if (!event.path.startsWith('/api/')) return defaultHandler(error, event);
 

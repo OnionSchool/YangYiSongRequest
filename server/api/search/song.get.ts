@@ -1,5 +1,5 @@
 import { createError, defineEventHandler, getQuery, setHeader } from 'h3';
-import { isSourceId, searchSongs } from '../../utils/music-sources';
+import { isSourceId, searchSongs, SourceError } from '../../utils/music-sources';
 import { getClientIp } from '../../utils/request-ip';
 import { consumePublicRateLimit } from '../../utils/public-rate-limit';
 import { SEARCH_RATE_LIMIT } from '../../utils/rate-limits';
@@ -45,6 +45,10 @@ export default defineEventHandler(async (event) => {
       statusCode: 502,
       statusMessage: 'Music search failed',
       message: `搜索失败：${message}`,
+      data:
+        error instanceof SourceError && error.apiUrl
+          ? { metingApi: error.apiUrl, source: error.source }
+          : undefined,
     });
   }
 });

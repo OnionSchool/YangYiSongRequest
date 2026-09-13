@@ -6,6 +6,7 @@ import { db } from './db';
 import { metingApi } from './schema';
 import type { SourceId } from './domain';
 import { fetchExternal, validateExternalUrl } from './external-url';
+import { logError } from './logger';
 
 export interface SongSummary {
   source: SourceId;
@@ -31,6 +32,7 @@ export class SourceError extends Error {
   constructor(
     readonly source: SourceId,
     message: string,
+    readonly apiUrl?: string,
     cause?: unknown
   ) {
     super(message, { cause });
@@ -203,6 +205,11 @@ function toMetingServer(source: SourceId): string {
   return source;
 }
 
+function metingApiAddress(value: string): string {
+  const url = new URL(value);
+  return `${url.origin}${url.pathname}`;
+}
+
 interface MetingSong {
   id?: string | number;
   name?: string;
@@ -275,20 +282,23 @@ async function metingFetchRaw<T>(
   params: Record<string, string>
 ): Promise<T> {
   const target = metingRequestUrl(api, source, params);
+  const apiUrl = metingApiAddress(api.baseUrl);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const response = await fetchExternal(target, { signal: controller.signal });
     if (!response.ok) {
-      throw new SourceError(source, `Meting API 返回 HTTP ${response.status}`);
+      throw new SourceError(source, `Meting API 返回 HTTP ${response.status}`, apiUrl);
     }
     const data = (await response.json()) as unknown;
     assertUsableMetingResponse(source, params, data);
     return data as T;
   } catch (error) {
-    if (error instanceof SourceError) throw error;
+    if (error instanceof SourceError) {
+      throw error.apiUrl ? error : new SourceError(source, error.message, apiUrl, error);
+    }
     const message = error instanceof Error ? error.message : '请求 Meting API 失败';
-    throw new SourceError(source, message, error);
+    throw new SourceError(source, message, apiUrl, error);
   } finally {
     clearTimeout(timer);
   }
@@ -313,7 +323,13 @@ async function metingRedirect(
         ? await validExternalUrl(new URL(location, response.url).toString())
         : null;
       if (response.status >= 300 && response.status < 400 && url) return url;
-    } catch {
+      logError('Meting 未返回音频重定向地址', undefined, {
+        meting: { api: metingApiAddress(api.baseUrl), source, capability, platformId: params.id },
+      });
+    } catch (error) {
+      logError('Meting 音频重定向请求失败', error, {
+        meting: { api: metingApiAddress(api.baseUrl), source, capability, platformId: params.id },
+      });
       // Try the next configured API.
     } finally {
       clearTimeout(timer);
@@ -342,7 +358,7 @@ async function metingFetch<T>(
   }
   throw lastError instanceof SourceError
     ? lastError
-    : new SourceError(source, '所有 Meting API 均不可用', lastError);
+    : new SourceError(source, '所有 Meting API 均不可用', undefined, lastError);
 }
 
 /** Build a cover proxy URL */
@@ -526,7 +542,12 @@ export async function fetchAudioUrl(source: SourceId, platformId: string): Promi
       br: '320',
     });
     return await validExternalUrl(result.url ?? null);
-  } catch {
+  } catch (error) {
+    if (error instanceof SourceError && error.apiUrl) {
+      logError('Meting 未返回音频地址', error, {
+        meting: { api: error.apiUrl, source, capability: 'download', platformId },
+      });
+    }
     return null;
   }
 }
