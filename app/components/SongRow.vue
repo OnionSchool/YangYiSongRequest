@@ -4,7 +4,7 @@ import { usePlayer } from '@/stores/player';
 import { duration } from '@/lib/slots';
 import type { Song } from '@/lib/api';
 
-const props = defineProps<{ song: Song }>();
+const props = defineProps<{ song: Song; previewEnabled: boolean }>();
 const emit = defineEmits<{ request: [Song] }>();
 
 const player = usePlayer();
@@ -40,6 +40,7 @@ const sounding = computed(() => current.value && player.playing);
     </div>
 
     <button
+      v-if="previewEnabled"
       type="button"
       class="shrink-0 rounded-control border border-rule px-3 py-2 text-sm"
       :class="sounding ? 'bg-orange/15' : ''"

@@ -6,6 +6,7 @@ import type { Grade } from './domain';
 
 export interface SiteConfig {
   requestsOpen: boolean;
+  guestPreviewOpen: boolean;
   requireIdentity: boolean;
   announcement: string;
   maxScheduleDays: number;
@@ -29,6 +30,7 @@ export interface SiteSnapshot extends SiteConfig {
 
 const DEFAULTS: SiteConfig = {
   requestsOpen: true,
+  guestPreviewOpen: true,
   requireIdentity: true,
   announcement: '',
   maxScheduleDays: 14,
@@ -65,6 +67,7 @@ async function load(): Promise<SiteSnapshot> {
 
   return {
     requestsOpen: decodeBool(map.get('requestsOpen'), DEFAULTS.requestsOpen),
+    guestPreviewOpen: decodeBool(map.get('guestPreviewOpen'), DEFAULTS.guestPreviewOpen),
     requireIdentity: decodeBool(map.get('requireIdentity'), DEFAULTS.requireIdentity),
     announcement: map.get('announcement') ?? DEFAULTS.announcement,
     maxScheduleDays: decodeInt(map.get('maxScheduleDays'), DEFAULTS.maxScheduleDays),

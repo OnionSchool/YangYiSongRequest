@@ -18,6 +18,7 @@ const props = defineProps<{
   nowLabel?: string;
   /** 当前正在播出的时段属于哪一天，只有那天的卡片才点亮 ON AIR */
   liveDate?: string;
+  previewEnabled?: boolean;
 }>();
 
 /** 拖过这个比例（相对一整格的行程）就翻页，没到就弹回去 */
@@ -249,6 +250,7 @@ function onClickCapture(event: MouseEvent): void {
               :relative="day.relative === '今天' ? '今天的播出单' : day.relative"
               :active-slot-id="day.date === liveDate ? activeSlotId : null"
               :emphasis="day.relative === '今天'"
+              :preview-enabled="previewEnabled"
             >
               <template v-if="day.date === liveDate && nowLabel" #aside>
                 <p class="mt-0.5 font-mono text-sm tabular-nums text-ink-soft">{{ nowLabel }}</p>

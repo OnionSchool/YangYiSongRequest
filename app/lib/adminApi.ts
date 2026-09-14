@@ -254,6 +254,7 @@ const put = <T>(path: string, body?: unknown) =>
 export const readSiteConfig = () =>
   apiFetch<{
     requestsOpen: boolean;
+    guestPreviewOpen: boolean;
     requireIdentity: boolean;
     forceChangePassword: boolean;
     requireEmailBind: boolean;
@@ -263,6 +264,7 @@ export const readSiteConfig = () =>
 
 export const saveSiteConfig = (body: {
   requestsOpen?: boolean;
+  guestPreviewOpen?: boolean;
   requireIdentity?: boolean;
   forceChangePassword?: boolean;
   requireEmailBind?: boolean;

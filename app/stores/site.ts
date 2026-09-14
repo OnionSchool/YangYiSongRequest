@@ -30,6 +30,7 @@ export const useSite = defineStore('site', () => {
   const slots = computed(() => data.value?.slots ?? FALLBACK_SLOTS);
   const requireIdentity = computed(() => data.value?.requireIdentity ?? true);
   const requestsOpen = computed(() => data.value?.requestsOpen ?? true);
+  const guestPreviewOpen = computed(() => data.value?.guestPreviewOpen ?? true);
   const announcement = computed(() => data.value?.announcement?.trim() ?? '');
   const classCounts = computed(() => data.value?.classCounts ?? { G1: 23, G2: 23, G3: 23 });
 
@@ -41,6 +42,7 @@ export const useSite = defineStore('site', () => {
     slots,
     requireIdentity,
     requestsOpen,
+    guestPreviewOpen,
     announcement,
     classCounts,
   };

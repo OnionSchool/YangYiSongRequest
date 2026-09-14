@@ -13,6 +13,7 @@ const props = defineProps<{
   /** 「今天」「昨天」这类相对标签，没有就只显示日期 */
   relative?: string;
   activeSlotId?: string | null;
+  previewEnabled?: boolean;
   /** 今天的播出单用大标题，其余日期用小标题 */
   emphasis?: boolean;
 }>();
@@ -89,6 +90,7 @@ const sourceLabel = (id: SourceId) => SOURCES.find((item) => item.id === id)?.la
               </p>
             </div>
             <button
+              v-if="previewEnabled"
               type="button"
               class="shrink-0 rounded-control border border-rule px-2.5 py-1.5 text-xs"
               :class="

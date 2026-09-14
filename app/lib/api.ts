@@ -53,6 +53,7 @@ export interface SlotView {
 
 export interface SiteSnapshot {
   requestsOpen: boolean;
+  guestPreviewOpen: boolean;
   requireIdentity: boolean;
   announcement: string;
   maxScheduleDays: number;

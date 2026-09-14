@@ -124,6 +124,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
     :active-slot-id="activeSlotId"
     :live-date="today"
     :now-label="now"
+    :preview-enabled="site.guestPreviewOpen"
   />
 
   <p class="mt-4">
@@ -170,7 +171,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
     <p v-if="player.error" class="mt-3 text-sm text-orange-deep">{{ player.error }}</p>
 
     <p v-if="!searched" class="mt-3 text-sm text-ink-soft">
-      输入关键词后可以试听，选中的歌点「点歌」提交给台里。
+      输入关键词后{{ site.guestPreviewOpen ? '可以试听，' : '' }}选中的歌点「点歌」提交给台里。
     </p>
 
     <div v-else class="mt-3">
@@ -187,6 +188,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
             v-for="song in currentTab.songs"
             :key="song.platformId"
             :song="song"
+            :preview-enabled="site.guestPreviewOpen"
             @request="picked = $event"
           />
         </ul>

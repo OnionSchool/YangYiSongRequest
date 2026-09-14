@@ -11,6 +11,7 @@ export default defineEventHandler(async (event) => {
 
   return {
     requestsOpen: site.requestsOpen,
+    guestPreviewOpen: site.guestPreviewOpen,
     requireIdentity: site.requireIdentity,
     announcement: site.announcement,
     maxScheduleDays: site.maxScheduleDays,

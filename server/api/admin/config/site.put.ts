@@ -18,6 +18,9 @@ export default defineEventHandler(async (event) => {
   if (typeof body.requestsOpen === 'boolean') {
     updates.requestsOpen = encodeBool(body.requestsOpen);
   }
+  if (typeof body.guestPreviewOpen === 'boolean') {
+    updates.guestPreviewOpen = encodeBool(body.guestPreviewOpen);
+  }
   if (typeof body.requireIdentity === 'boolean') {
     updates.requireIdentity = encodeBool(body.requireIdentity);
   }

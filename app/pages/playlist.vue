@@ -4,8 +4,10 @@ import PlaylistCard from '@/components/PlaylistCard.vue';
 import { fetchPlaylistDate, type PlaylistDay } from '@/lib/api';
 import { isoDate, relativeDayLabel, shiftDate } from '@/lib/time';
 import { useServerClock } from '@/stores/clock';
+import { useSite } from '@/stores/site';
 
 const clock = useServerClock();
+const site = useSite();
 const selectedDate = ref(isoDate(clock.serverNow));
 const playlist = ref<PlaylistDay | null>(null);
 const loading = ref(false);
@@ -33,7 +35,10 @@ function nextDay() {
   selectedDate.value = shiftDate(selectedDate.value, 1);
 }
 
-onMounted(load);
+onMounted(async () => {
+  await site.load();
+  await load();
+});
 watch(selectedDate, load);
 </script>
 
@@ -71,6 +76,7 @@ watch(selectedDate, load);
       :date="playlist.date"
       :relative="relativeDayLabel(playlist.date, today)"
       :slots="playlist.slots"
+      :preview-enabled="site.guestPreviewOpen"
     />
   </div>
 </template>

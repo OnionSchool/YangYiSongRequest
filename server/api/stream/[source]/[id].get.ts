@@ -4,6 +4,7 @@ import { fetchExternal } from '../../../utils/external-url';
 import { getClientIp } from '../../../utils/request-ip';
 import { consumePublicRateLimit } from '../../../utils/public-rate-limit';
 import { STREAM_RATE_LIMIT } from '../../../utils/rate-limits';
+import { readSite } from '../../../utils/site';
 
 const CONNECTION_TIMEOUT_MS = 60_000;
 const MAX_CONCURRENT_STREAMS_PER_IP = 3;
@@ -30,6 +31,13 @@ function acquireStream(ip: string): () => void {
 }
 
 export default defineEventHandler(async (event) => {
+  if (!(await readSite()).guestPreviewOpen) {
+    throw createError({
+      statusCode: 403,
+      statusMessage: 'Forbidden',
+      message: '访客试听功能已关闭',
+    });
+  }
   const source = getRouterParam(event, 'source');
   const platformId = getRouterParam(event, 'id');
   if (!isSourceId(source) || !platformId) {

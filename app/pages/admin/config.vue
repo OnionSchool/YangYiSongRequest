@@ -21,6 +21,7 @@ const activeTab = ref('site');
 
 // Site
 const requestsOpen = ref(true);
+const guestPreviewOpen = ref(true);
 const requireIdentity = ref(true);
 const forceChangePassword = ref(true);
 const requireEmailBind = ref(false);
@@ -71,6 +72,7 @@ async function loadAll() {
     ]);
     if (site) {
       requestsOpen.value = site.requestsOpen;
+      guestPreviewOpen.value = site.guestPreviewOpen;
       requireIdentity.value = site.requireIdentity;
       forceChangePassword.value = site.forceChangePassword ?? true;
       requireEmailBind.value = site.requireEmailBind ?? false;
@@ -110,6 +112,7 @@ async function saveSite() {
   try {
     await saveSiteConfig({
       requestsOpen: requestsOpen.value,
+      guestPreviewOpen: guestPreviewOpen.value,
       requireIdentity: requireIdentity.value,
       forceChangePassword: forceChangePassword.value,
       requireEmailBind: requireEmailBind.value,
@@ -243,6 +246,19 @@ onMounted(loadAll);
           </div>
           <label class="relative inline-flex items-center cursor-pointer">
             <input v-model="requestsOpen" type="checkbox" class="sr-only peer" />
+            <div
+              class="w-10 h-6 bg-rule rounded-full peer-checked:bg-green-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"
+            />
+          </label>
+        </div>
+
+        <div class="border-t border-rule pt-5 flex items-center justify-between">
+          <div>
+            <p class="font-medium">开放访客试听</p>
+            <p class="text-sm text-ink-faint mt-0.5">关闭后访客无法试听搜索结果和播出单歌曲</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input v-model="guestPreviewOpen" type="checkbox" class="sr-only peer" />
             <div
               class="w-10 h-6 bg-rule rounded-full peer-checked:bg-green-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"
             />
