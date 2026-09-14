@@ -2,6 +2,7 @@ import { createError, defineEventHandler, getQuery, setHeader } from 'h3';
 import { fetchCoverUrl } from '../../utils/music-sources';
 import type { SourceId } from '../../utils/domain';
 import { fetchExternal } from '../../utils/external-url';
+import { readCachedCover, saveCachedCover } from '../../utils/cover-cache';
 
 const TIMEOUT_MS = 8_000;
 const SOURCE_BY_SERVER: Record<string, SourceId> = {
@@ -21,6 +22,13 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
 
+  const cached = await readCachedCover(source, id, size);
+  if (cached) {
+    setHeader(event, 'Cache-Control', 'public, max-age=86400, s-maxage=86400');
+    setHeader(event, 'Content-Type', cached.contentType);
+    return cached.body;
+  }
+
   const imageUrl = await fetchCoverUrl(source, id, size);
   if (!imageUrl) {
     throw createError({ statusCode: 404, statusMessage: 'Cover not found' });
@@ -29,13 +37,20 @@ export default defineEventHandler(async (event) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const imageRes = await fetchExternal(imageUrl, { signal: controller.signal });
+    const imageHost = new URL(imageUrl).hostname;
+    const imageRes = await fetchExternal(imageUrl, { signal: controller.signal }, [imageHost]);
     if (!imageRes.ok || !imageRes.body) {
       throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
     }
+    const body = Buffer.from(await imageRes.arrayBuffer());
+    if (body.length > 5 * 1024 * 1024) {
+      throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
+    }
+    const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
+    await saveCachedCover(source, id, size, { body, contentType });
     setHeader(event, 'Cache-Control', 'public, max-age=86400, s-maxage=86400');
-    setHeader(event, 'Content-Type', imageRes.headers.get('content-type') ?? 'image/jpeg');
-    return imageRes.body;
+    setHeader(event, 'Content-Type', contentType);
+    return body;
   } catch (error) {
     if ((error as { statusCode?: unknown })?.statusCode) throw error;
     throw createError({ statusCode: 502, statusMessage: 'Cover proxy failed' });

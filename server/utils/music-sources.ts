@@ -392,8 +392,9 @@ function platformId(song: MetingSong): string | undefined {
 }
 
 function songCoverUrl(source: SourceId, song: MetingSong): string | undefined {
-  if (song.pic?.startsWith('http://') || song.pic?.startsWith('https://')) return song.pic;
-  return song.pic_id == null ? undefined : coverProxyUrl(source, String(song.pic_id));
+  const picId = song.pic_id ?? idFromMetingUrl(song.pic);
+  if (picId != null) return coverProxyUrl(source, String(picId));
+  return song.pic?.startsWith('http://') || song.pic?.startsWith('https://') ? song.pic : undefined;
 }
 
 function formatArtist(
