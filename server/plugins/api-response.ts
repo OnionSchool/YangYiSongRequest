@@ -1,9 +1,12 @@
 import type { H3Event } from 'h3';
 
-const BINARY_PATHS = ['/api/cover/', '/api/stream/', '/api/admin/download/'];
+const BINARY_PATHS = ['/api/cover/', '/api/stream/', '/api/admin/download/day/'];
 
 function isBinaryResponse(event: H3Event): boolean {
-  return BINARY_PATHS.some((path) => event.path.startsWith(path));
+  return (
+    BINARY_PATHS.some((path) => event.path.startsWith(path)) ||
+    (/^\/api\/admin\/download\/song\/[^/]+$/.test(event.path) && event.method === 'GET')
+  );
 }
 
 /** Wrap ordinary JSON API route results while leaving file and media responses untouched. */
