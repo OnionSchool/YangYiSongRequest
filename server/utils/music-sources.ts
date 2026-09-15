@@ -413,7 +413,8 @@ async function resolveAudioUrl(url: string): Promise<string | null> {
     if (response.status >= 300 && response.status < 400 && location) {
       return await validExternalUrl(new URL(location, response.url).toString());
     }
-    return response.ok ? response.url : null;
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    return response.ok && contentType.startsWith('audio/') ? response.url : null;
   } catch {
     return null;
   }

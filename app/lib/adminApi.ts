@@ -160,7 +160,21 @@ export const manualAdd = (body: {
   slotId?: string;
 }) => post<{ id: string; queryCode: string }>('/api/admin/requests/manual', body);
 
-export const listAudit = (page = 1) => apiFetch<AuditPage>(`/api/admin/audit?page=${page}`);
+export interface AuditFilters {
+  page?: number;
+  action?: string;
+  keyword?: string;
+  from?: string;
+  to?: string;
+}
+
+export const listAudit = (filters: AuditFilters = {}) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) query.set(key, String(value));
+  }
+  return apiFetch<AuditPage>(`/api/admin/audit?${query}`);
+};
 
 export interface SongRequestRecord {
   id: string;
@@ -183,10 +197,25 @@ export interface SongRequestRecord {
   createdAt: string;
 }
 
-export const listSongRequestRecords = (page = 1) =>
-  apiFetch<{ total: number; page: number; pageSize: number; items: SongRequestRecord[] }>(
-    `/api/admin/request-records?page=${page}`
+export interface SongRequestRecordFilters {
+  page?: number;
+  keyword?: string;
+  status?: string;
+  source?: string;
+  submitter?: 'manual' | 'visitor';
+  from?: string;
+  to?: string;
+}
+
+export const listSongRequestRecords = (filters: SongRequestRecordFilters = {}) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) query.set(key, String(value));
+  }
+  return apiFetch<{ total: number; page: number; pageSize: number; items: SongRequestRecord[] }>(
+    `/api/admin/request-records?${query}`
   );
+};
 
 // ---- 以下只有超管能调（S7 配置）----
 

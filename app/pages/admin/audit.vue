@@ -11,6 +11,7 @@ const pageSize = ref(30);
 const loading = ref(false);
 const error = ref<string | null>(null);
 const selectedEntry = ref<AuditEntry | null>(null);
+const filters = ref({ action: '', keyword: '', from: '', to: '' });
 
 const actionLabels: Record<string, string> = {
   login: '登录后台',
@@ -57,7 +58,7 @@ async function load(nextPage = page.value) {
   loading.value = true;
   error.value = null;
   try {
-    const result = await listAudit(nextPage);
+    const result = await listAudit({ page: nextPage, ...filters.value });
     entries.value = result.items;
     total.value = result.total;
     page.value = result.page;
@@ -67,6 +68,15 @@ async function load(nextPage = page.value) {
   } finally {
     loading.value = false;
   }
+}
+
+function applyFilters() {
+  void load(1);
+}
+
+function clearFilters() {
+  filters.value = { action: '', keyword: '', from: '', to: '' };
+  void load(1);
 }
 
 onMounted(load);
@@ -90,6 +100,55 @@ onMounted(load);
       </button>
     </div>
 
+    <form
+      class="paper-card mt-5 grid gap-3 p-4 lg:grid-cols-[minmax(14rem,1fr)_11rem_9rem_9rem_auto]"
+      @submit.prevent="applyFilters"
+    >
+      <label class="grid gap-1.5 text-xs text-ink-faint">
+        关键词
+        <input
+          v-model.trim="filters.keyword"
+          class="input-field"
+          maxlength="100"
+          placeholder="操作者、IP 或目标 ID"
+        />
+      </label>
+      <label class="grid gap-1.5 text-xs text-ink-faint">
+        操作类型
+        <select v-model="filters.action" class="input-field">
+          <option value="">全部操作</option>
+          <option v-for="(label, action) in actionLabels" :key="action" :value="action">
+            {{ label }}
+          </option>
+        </select>
+      </label>
+      <label class="grid gap-1.5 text-xs text-ink-faint">
+        开始日期
+        <input v-model="filters.from" class="input-field" type="date" />
+      </label>
+      <label class="grid gap-1.5 text-xs text-ink-faint">
+        结束日期
+        <input v-model="filters.to" class="input-field" type="date" />
+      </label>
+      <div class="flex items-end gap-2">
+        <button
+          class="btn-primary px-4 py-2 text-sm disabled:opacity-50"
+          :disabled="loading"
+          type="submit"
+        >
+          筛选
+        </button>
+        <button
+          class="btn-secondary px-4 py-2 text-sm disabled:opacity-50"
+          :disabled="loading"
+          type="button"
+          @click="clearFilters"
+        >
+          重置
+        </button>
+      </div>
+    </form>
+
     <div
       v-if="error"
       class="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
@@ -106,7 +165,11 @@ onMounted(load);
       v-else-if="entries.length === 0"
       class="paper-card mt-5 py-12 text-center text-sm text-ink-faint"
     >
-      暂无操作日志
+      {{
+        filters.action || filters.keyword || filters.from || filters.to
+          ? '没有符合筛选条件的操作日志'
+          : '暂无操作日志'
+      }}
     </div>
 
     <div v-else class="paper-card mt-5 overflow-hidden">
