@@ -1,10 +1,16 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useAdmin } from '~/stores/admin';
+import {
+  readDownloadPreference,
+  saveDownloadPreference,
+  type DownloadPreference,
+} from '~/lib/download-preference';
 
 definePageMeta({ layout: 'admin' });
 
 const admin = useAdmin();
+const downloadPreference = ref<DownloadPreference>('proxy');
 
 const roleLabel = computed(() => {
   switch (admin.me?.role) {
@@ -14,6 +20,16 @@ const roleLabel = computed(() => {
       return '技术员';
     default:
       return '策划';
+  }
+});
+
+function savePreference() {
+  if (admin.me?.username) saveDownloadPreference(admin.me.username, downloadPreference.value);
+}
+
+onMounted(() => {
+  if (admin.me?.username) {
+    downloadPreference.value = readDownloadPreference(admin.me.username) ?? 'proxy';
   }
 });
 </script>
@@ -49,6 +65,45 @@ const roleLabel = computed(() => {
           <dd class="text-right">{{ roleLabel }}</dd>
         </div>
       </dl>
+    </section>
+
+    <section class="paper-card mt-6 overflow-hidden">
+      <div class="border-b border-rule px-5 py-4">
+        <h2 class="font-medium">下载设置</h2>
+        <p class="mt-1 text-sm text-ink-faint">此设置仅保存在当前浏览器和账号中。</p>
+      </div>
+      <div class="space-y-3 px-5 py-4">
+        <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
+          <input
+            v-model="downloadPreference"
+            value="direct"
+            type="radio"
+            class="mt-1 accent-orange-deep"
+            @change="savePreference"
+          />
+          <span
+            ><span class="block text-sm font-medium">直接下载</span
+            ><span class="mt-1 block text-xs text-ink-faint"
+              >使用缓存文件或音源原始链接。</span
+            ></span
+          >
+        </label>
+        <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
+          <input
+            v-model="downloadPreference"
+            value="proxy"
+            type="radio"
+            class="mt-1 accent-orange-deep"
+            @change="savePreference"
+          />
+          <span
+            ><span class="block text-sm font-medium">通过自定义下载地址下载</span
+            ><span class="mt-1 block text-xs text-ink-faint"
+              >由服务器按后台下载配置获取文件。</span
+            ></span
+          >
+        </label>
+      </div>
     </section>
   </div>
 </template>

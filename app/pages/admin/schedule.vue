@@ -13,6 +13,11 @@ import {
 } from '~/lib/adminApi';
 import { useAdmin } from '~/stores/admin';
 import { isoDate, shiftDate } from '~/lib/time';
+import {
+  readDownloadPreference,
+  saveDownloadPreference,
+  type DownloadPreference,
+} from '~/lib/download-preference';
 
 definePageMeta({ layout: 'admin' });
 
@@ -29,6 +34,9 @@ const downloadingBatch = ref(false);
 const selectedSongIds = ref<string[]>([]);
 const batchProgress = ref<{ current: number; total: number } | null>(null);
 const downloadMode = ref<DownloadMode>('proxy');
+const pendingDownloadIds = ref<string[] | null>(null);
+const selectedDownloadMode = ref<DownloadPreference>('proxy');
+const rememberDownloadMode = ref(false);
 const unschedulingId = ref<string | null>(null);
 const pendingUnscheduleId = ref<string | null>(null);
 const admin = useAdmin();
@@ -84,50 +92,68 @@ async function setPlaybackStatus(
   }
 }
 
-async function downloadSongFile(id: string) {
+async function performDownloads(ids: string[], mode: DownloadPreference) {
   error.value = null;
-  downloadNotice.value = '正在准备音频，首次下载可能需要一点时间…';
-  downloadingSongId.value = id;
+  if (ids.length === 1) {
+    downloadNotice.value = '正在准备音频，首次下载可能需要一点时间…';
+    downloadingSongId.value = ids[0];
+  } else {
+    downloadingBatch.value = true;
+  }
   try {
-    if (downloadMode.value === 'direct') {
-      await downloadSongDirect(id);
-    } else {
-      await downloadSong(id);
+    for (const [index, id] of ids.entries()) {
+      if (ids.length > 1) {
+        batchProgress.value = { current: index + 1, total: ids.length };
+        downloadNotice.value = `正在准备第 ${index + 1}/${ids.length} 首音频…`;
+      }
+      if (mode === 'direct') await downloadSongDirect(id);
+      else await downloadSong(id);
     }
-    downloadNotice.value = '音频已开始下载。';
+    downloadNotice.value =
+      ids.length === 1 ? '音频已开始下载。' : `${ids.length} 首音频已开始下载。`;
+    if (ids.length > 1) selectedSongIds.value = [];
   } catch (e: any) {
     error.value = e.message ?? '下载失败';
     downloadNotice.value = null;
   } finally {
     downloadingSongId.value = null;
-  }
-}
-
-async function downloadSelectedSongs() {
-  const ids = [...selectedSongIds.value];
-  if (!ids.length) return;
-
-  error.value = null;
-  downloadingBatch.value = true;
-  try {
-    for (const [index, id] of ids.entries()) {
-      batchProgress.value = { current: index + 1, total: ids.length };
-      downloadNotice.value = `正在准备第 ${index + 1}/${ids.length} 首音频…`;
-      if (downloadMode.value === 'direct') {
-        await downloadSongDirect(id);
-      } else {
-        await downloadSong(id);
-      }
-    }
-    downloadNotice.value = `${ids.length} 首音频已开始下载。`;
-    selectedSongIds.value = [];
-  } catch (e: any) {
-    error.value = e.message ?? '下载失败';
-    downloadNotice.value = null;
-  } finally {
     downloadingBatch.value = false;
     batchProgress.value = null;
   }
+}
+
+function requestDownload(ids: string[]) {
+  const username = admin.me?.username;
+  const preference = username ? readDownloadPreference(username) : null;
+  if (preference) {
+    void performDownloads(ids, preference);
+    return;
+  }
+  selectedDownloadMode.value = downloadMode.value;
+  rememberDownloadMode.value = false;
+  pendingDownloadIds.value = ids;
+}
+
+function downloadSongFile(id: string) {
+  requestDownload([id]);
+}
+
+function downloadSelectedSongs() {
+  if (selectedSongIds.value.length) requestDownload([...selectedSongIds.value]);
+}
+
+function closeDownloadDialog() {
+  pendingDownloadIds.value = null;
+}
+
+function confirmDownloadMode() {
+  const ids = pendingDownloadIds.value;
+  if (!ids?.length) return;
+  if (rememberDownloadMode.value && admin.me?.username) {
+    saveDownloadPreference(admin.me.username, selectedDownloadMode.value);
+  }
+  pendingDownloadIds.value = null;
+  void performDownloads(ids, selectedDownloadMode.value);
 }
 
 async function downloadDayFile() {
@@ -523,6 +549,77 @@ onMounted(async () => {
                 @click="doUnschedule"
               >
                 {{ unschedulingId ? '取消中…' : '确认取消排期' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition duration-150 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="pendingDownloadIds"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          @click.self="closeDownloadDialog"
+        >
+          <div class="w-full max-w-md rounded-xl border border-rule bg-paper p-5 shadow-xl">
+            <h2 class="text-base font-bold" style="font-family: var(--font-display)">
+              选择下载方式
+            </h2>
+            <p class="mt-2 text-sm leading-6 text-ink-faint">
+              {{ pendingDownloadIds.length }} 首歌曲将分别下载，不会打包为 ZIP。
+            </p>
+            <div class="mt-4 space-y-3">
+              <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
+                <input
+                  v-model="selectedDownloadMode"
+                  value="direct"
+                  type="radio"
+                  class="mt-1 accent-orange-deep"
+                />
+                <span>
+                  <span class="block text-sm font-medium">直接下载</span>
+                  <span class="mt-1 block text-xs leading-5 text-ink-faint"
+                    >使用已缓存文件或音源原始链接。</span
+                  >
+                </span>
+              </label>
+              <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
+                <input
+                  v-model="selectedDownloadMode"
+                  value="proxy"
+                  type="radio"
+                  class="mt-1 accent-orange-deep"
+                />
+                <span>
+                  <span class="block text-sm font-medium">通过自定义下载地址下载</span>
+                  <span class="mt-1 block text-xs leading-5 text-ink-faint"
+                    >由服务器按后台下载配置获取并下载。</span
+                  >
+                </span>
+              </label>
+            </div>
+            <label class="mt-4 flex items-center gap-2 text-sm text-ink-soft">
+              <input v-model="rememberDownloadMode" type="checkbox" class="accent-orange-deep" />
+              记住我的选择，可在个人资料中修改
+            </label>
+            <div class="mt-5 flex justify-end gap-3">
+              <button
+                class="rounded-lg border border-rule px-4 py-2 text-sm text-ink-soft hover:border-ink-faint"
+                @click="closeDownloadDialog"
+              >
+                取消
+              </button>
+              <button
+                class="rounded-lg bg-orange-deep px-4 py-2 text-sm text-white hover:bg-orange-deep/90"
+                @click="confirmDownloadMode"
+              >
+                开始下载
               </button>
             </div>
           </div>
