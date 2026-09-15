@@ -133,10 +133,10 @@ export async function scheduleRequest(
     if (existing) throw badRequest('REQUEST_ALREADY_SCHEDULED', '该请求已经排期');
     const currentCount = sqlite
       .prepare(
-        'SELECT COUNT(*) AS "count", COALESCE(SUM(r."durationMs"), 0) AS "totalMs" FROM "Schedule" s JOIN "SongRequest" r ON r."id" = s."requestId" WHERE s."playDate" = ? AND s."slotId" = ?'
+        'SELECT COUNT(*) AS "count", COALESCE(MAX(s."orderNo"), 0) AS "maxOrderNo", COALESCE(SUM(r."durationMs"), 0) AS "totalMs" FROM "Schedule" s JOIN "SongRequest" r ON r."id" = s."requestId" WHERE s."playDate" = ? AND s."slotId" = ?'
       )
-      .get(playDate, slotId) as { count: number; totalMs: number };
-    const orderNo = Number(currentCount.count) + 1;
+      .get(playDate, slotId) as { count: number; maxOrderNo: number; totalMs: number };
+    const orderNo = Number(currentCount.maxOrderNo) + 1;
     if (slot.maxCount !== null && orderNo > slot.maxCount) {
       throw badRequest('SLOT_COUNT_EXCEEDED', `已超出该时段上限（${slot.maxCount}首）`);
     }
