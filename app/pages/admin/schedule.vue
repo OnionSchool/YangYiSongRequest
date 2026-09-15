@@ -242,6 +242,7 @@ onMounted(async () => {
       </button>
       <button
         v-if="canDownload"
+        type="button"
         class="ml-auto rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint disabled:cursor-wait disabled:opacity-60"
         :disabled="isDownloading"
         @click="downloadDayFile"
@@ -250,6 +251,7 @@ onMounted(async () => {
       </button>
       <button
         v-if="canDownload"
+        type="button"
         class="rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint disabled:cursor-wait disabled:opacity-60"
         :disabled="isDownloading || !selectedSongIds.length"
         @click="downloadSelectedSongs"
@@ -262,6 +264,7 @@ onMounted(async () => {
       </button>
       <button
         v-if="canDownload && allSongIds.length"
+        type="button"
         class="rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint disabled:cursor-wait disabled:opacity-60"
         :disabled="isDownloading"
         @click="toggleAllSongs"
@@ -414,6 +417,7 @@ onMounted(async () => {
             </span>
             <button
               v-if="canDownload"
+              type="button"
               class="shrink-0 rounded-lg border border-rule px-2.5 py-1 text-xs disabled:cursor-wait disabled:opacity-60"
               :disabled="isDownloading"
               @click="downloadSongFile(song.id)"
