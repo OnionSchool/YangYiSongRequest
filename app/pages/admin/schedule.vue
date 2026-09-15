@@ -56,6 +56,24 @@ async function load() {
   }
 }
 
+function minutes(time: string): number {
+  const [hour, minute] = time.split(':').map(Number);
+  return hour * 60 + minute;
+}
+
+function hasDayEnded(): boolean {
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const latestEnd = Math.max(
+    ...slots.value.map((slot) => {
+      const start = minutes(slot.startTime);
+      const end = minutes(slot.endTime);
+      return end <= start ? end + 24 * 60 : end;
+    })
+  );
+  return Number.isFinite(latestEnd) && nowMinutes >= latestEnd;
+}
+
 function requestUnschedule(requestId: string) {
   pendingUnscheduleId.value = requestId;
 }
@@ -232,6 +250,10 @@ function dateLabel(d: string) {
 
 onMounted(async () => {
   await load();
+  if (hasDayEnded()) {
+    selectedDate.value = shiftDate(today, 1);
+    await load();
+  }
   try {
     downloadMode.value = (await readDownloadTemplates()).mode;
   } catch {
