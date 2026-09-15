@@ -5,10 +5,8 @@ import {
   unscheduleRequest,
   updatePlaybackStatus,
   downloadDayZip,
-  downloadSongDirect,
   downloadSong,
-  readDownloadTemplates,
-  type DownloadMode,
+  saveSongsAs,
   type AdminDaySlot,
 } from '~/lib/adminApi';
 import { useAdmin } from '~/stores/admin';
@@ -33,9 +31,8 @@ const downloadingDay = ref(false);
 const downloadingBatch = ref(false);
 const selectedSongIds = ref<string[]>([]);
 const batchProgress = ref<{ current: number; total: number } | null>(null);
-const downloadMode = ref<DownloadMode>('proxy');
 const pendingDownloadIds = ref<string[] | null>(null);
-const selectedDownloadMode = ref<DownloadPreference>('proxy');
+const selectedDownloadMode = ref<DownloadPreference>('download');
 const rememberDownloadMode = ref(false);
 const unschedulingId = ref<string | null>(null);
 const pendingUnscheduleId = ref<string | null>(null);
@@ -124,8 +121,11 @@ async function performDownloads(ids: string[], mode: DownloadPreference) {
         batchProgress.value = { current: index + 1, total: ids.length };
         downloadNotice.value = `正在准备第 ${index + 1}/${ids.length} 首音频…`;
       }
-      if (mode === 'direct') await downloadSongDirect(id);
-      else await downloadSong(id);
+      if (mode === 'download') await downloadSong(id);
+      else {
+        await saveSongsAs(ids.slice(index));
+        break;
+      }
     }
     downloadNotice.value =
       ids.length === 1 ? '音频已开始下载。' : `${ids.length} 首音频已开始下载。`;
@@ -147,7 +147,7 @@ function requestDownload(ids: string[]) {
     void performDownloads(ids, preference);
     return;
   }
-  selectedDownloadMode.value = downloadMode.value;
+  selectedDownloadMode.value = 'download';
   rememberDownloadMode.value = false;
   pendingDownloadIds.value = ids;
 }
@@ -253,11 +253,6 @@ onMounted(async () => {
   if (hasDayEnded()) {
     selectedDate.value = shiftDate(today, 1);
     await load();
-  }
-  try {
-    downloadMode.value = (await readDownloadTemplates()).mode;
-  } catch {
-    downloadMode.value = 'proxy';
   }
 });
 </script>
@@ -600,28 +595,28 @@ onMounted(async () => {
               <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
                 <input
                   v-model="selectedDownloadMode"
-                  value="direct"
+                  value="download"
                   type="radio"
                   class="mt-1 accent-orange-deep"
                 />
                 <span>
-                  <span class="block text-sm font-medium">直接下载</span>
+                  <span class="block text-sm font-medium">下载</span>
                   <span class="mt-1 block text-xs leading-5 text-ink-faint"
-                    >使用已缓存文件或音源原始链接。</span
+                    >直接保存到浏览器默认下载目录。</span
                   >
                 </span>
               </label>
               <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
                 <input
                   v-model="selectedDownloadMode"
-                  value="proxy"
+                  value="saveAs"
                   type="radio"
                   class="mt-1 accent-orange-deep"
                 />
                 <span>
-                  <span class="block text-sm font-medium">通过自定义下载地址下载</span>
+                  <span class="block text-sm font-medium">另存为</span>
                   <span class="mt-1 block text-xs leading-5 text-ink-faint"
-                    >由服务器按后台下载配置获取并下载。</span
+                    >下载前选择保存位置；批量下载时选择一次目录。</span
                   >
                 </span>
               </label>

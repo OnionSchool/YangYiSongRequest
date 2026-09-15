@@ -370,7 +370,30 @@ function filenameFromDisposition(value: string | null, fallback: string): string
   }
 }
 
-async function downloadFile(path: string, fallbackName: string): Promise<void> {
+interface DownloadedFile {
+  blob: Blob;
+  fileName: string;
+}
+
+interface WritableFile {
+  write(data: Blob): Promise<void>;
+  close(): Promise<void>;
+}
+
+interface FileHandle {
+  createWritable(): Promise<WritableFile>;
+}
+
+interface DirectoryHandle {
+  getFileHandle(name: string, options: { create: boolean }): Promise<FileHandle>;
+}
+
+interface FileSystemWindow extends Window {
+  showSaveFilePicker?: (options: { suggestedName: string }) => Promise<FileHandle>;
+  showDirectoryPicker?: (options: { mode: 'readwrite' }) => Promise<DirectoryHandle>;
+}
+
+async function fetchDownload(path: string, fallbackName: string): Promise<DownloadedFile> {
   const response = await fetch(path, { credentials: 'same-origin' });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
@@ -383,13 +406,18 @@ async function downloadFile(path: string, fallbackName: string): Promise<void> {
       response.status
     );
   }
-  const url = URL.createObjectURL(await response.blob());
+  return {
+    blob: await response.blob(),
+    fileName: filenameFromDisposition(response.headers.get('content-disposition'), fallbackName),
+  };
+}
+
+async function downloadFile(path: string, fallbackName: string): Promise<void> {
+  const { blob, fileName } = await fetchDownload(path, fallbackName);
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = filenameFromDisposition(
-    response.headers.get('content-disposition'),
-    fallbackName
-  );
+  link.download = fileName;
   document.body.append(link);
   link.click();
   link.remove();
@@ -398,17 +426,29 @@ async function downloadFile(path: string, fallbackName: string): Promise<void> {
 
 export const downloadSong = (id: string) =>
   downloadFile(`/api/admin/download/song/${id}`, 'audio.mp3');
-export async function downloadSongDirect(id: string): Promise<void> {
-  const link = await apiFetch<{ url: string; fileName: string }>(
-    `/api/admin/download/song/${encodeURIComponent(id)}/link`
-  );
-  const anchor = document.createElement('a');
-  anchor.href = link.url;
-  anchor.download = link.fileName;
-  anchor.rel = 'noopener';
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
+
+export async function saveSongsAs(ids: string[]): Promise<void> {
+  const browser = window as FileSystemWindow;
+  if (!browser.showSaveFilePicker || !browser.showDirectoryPicker) {
+    throw new ApiError('SAVE_AS_UNSUPPORTED', '当前浏览器不支持另存为，请使用下载', 400);
+  }
+  if (ids.length === 1) {
+    const handle = await browser.showSaveFilePicker({ suggestedName: 'audio.mp3' });
+    const file = await fetchDownload(`/api/admin/download/song/${ids[0]}`, 'audio.mp3');
+    const writable = await handle.createWritable();
+    await writable.write(file.blob);
+    await writable.close();
+    return;
+  }
+
+  const directory = await browser.showDirectoryPicker({ mode: 'readwrite' });
+  for (const id of ids) {
+    const file = await fetchDownload(`/api/admin/download/song/${id}`, 'audio.mp3');
+    const handle = await directory.getFileHandle(file.fileName, { create: true });
+    const writable = await handle.createWritable();
+    await writable.write(file.blob);
+    await writable.close();
+  }
 }
 export const downloadDayZip = (date: string, slotId?: string) =>
   downloadFile(

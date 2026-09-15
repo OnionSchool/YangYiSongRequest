@@ -10,7 +10,7 @@ import {
 definePageMeta({ layout: 'admin' });
 
 const admin = useAdmin();
-const downloadPreference = ref<DownloadPreference>('proxy');
+const downloadPreference = ref<DownloadPreference>('download');
 
 const roleLabel = computed(() => {
   switch (admin.me?.role) {
@@ -29,7 +29,7 @@ function savePreference() {
 
 onMounted(() => {
   if (admin.me?.username) {
-    downloadPreference.value = readDownloadPreference(admin.me.username) ?? 'proxy';
+    downloadPreference.value = readDownloadPreference(admin.me.username) ?? 'download';
   }
 });
 </script>
@@ -76,31 +76,29 @@ onMounted(() => {
         <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
           <input
             v-model="downloadPreference"
-            value="direct"
+            value="download"
             type="radio"
             class="mt-1 accent-orange-deep"
             @change="savePreference"
           />
           <span
-            ><span class="block text-sm font-medium">直接下载</span
+            ><span class="block text-sm font-medium">下载</span
             ><span class="mt-1 block text-xs text-ink-faint"
-              >使用缓存文件或音源原始链接。</span
+              >直接保存到浏览器默认下载目录。</span
             ></span
           >
         </label>
         <label class="flex cursor-pointer gap-3 rounded-lg border border-rule p-3">
           <input
             v-model="downloadPreference"
-            value="proxy"
+            value="saveAs"
             type="radio"
             class="mt-1 accent-orange-deep"
             @change="savePreference"
           />
           <span
-            ><span class="block text-sm font-medium">通过自定义下载地址下载</span
-            ><span class="mt-1 block text-xs text-ink-faint"
-              >由服务器按后台下载配置获取文件。</span
-            ></span
+            ><span class="block text-sm font-medium">另存为</span
+            ><span class="mt-1 block text-xs text-ink-faint">下载前选择保存位置。</span></span
           >
         </label>
       </div>

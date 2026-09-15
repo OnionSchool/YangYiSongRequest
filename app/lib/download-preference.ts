@@ -1,6 +1,6 @@
-const STORAGE_KEY_PREFIX = 'yy-download-mode:';
+const STORAGE_KEY_PREFIX = 'yy-download-method:';
 
-export type DownloadPreference = 'direct' | 'proxy';
+export type DownloadPreference = 'download' | 'saveAs';
 
 function storageKey(username: string): string {
   return `${STORAGE_KEY_PREFIX}${username}`;
@@ -8,7 +8,7 @@ function storageKey(username: string): string {
 
 export function readDownloadPreference(username: string): DownloadPreference | null {
   const value = localStorage.getItem(storageKey(username));
-  return value === 'direct' || value === 'proxy' ? value : null;
+  return value === 'download' || value === 'saveAs' ? value : null;
 }
 
 export function saveDownloadPreference(username: string, mode: DownloadPreference): void {
