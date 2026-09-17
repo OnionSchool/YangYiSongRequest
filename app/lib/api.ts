@@ -76,8 +76,11 @@ export interface LookupResult {
 }
 
 export interface PlaylistSong {
+  source: SourceId;
+  platformId: string;
   title: string;
   artist: string;
+  coverUrl?: string;
   orderNo: number;
   playTime: string;
 }

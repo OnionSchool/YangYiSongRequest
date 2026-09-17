@@ -26,8 +26,11 @@ export async function buildPublicDay(date: string) {
     .select({
       slotId: schedule.slotId,
       orderNo: schedule.orderNo,
+      source: songRequest.source,
+      platformId: songRequest.platformId,
       title: songRequest.title,
       artist: songRequest.artist,
+      coverUrl: songRequest.coverUrl,
       durationMs: songRequest.durationMs,
     })
     .from(schedule)
@@ -50,8 +53,11 @@ export async function buildPublicDay(date: string) {
               playTime: `${String(Math.floor(seconds / 3600) % 24).padStart(2, '0')}:${String(
                 Math.floor(seconds / 60) % 60
               ).padStart(2, '0')}`,
+              source: row.source,
+              platformId: row.platformId,
               title: row.title,
               artist: row.artist,
+              coverUrl: row.coverUrl ?? undefined,
             };
           });
         return {
