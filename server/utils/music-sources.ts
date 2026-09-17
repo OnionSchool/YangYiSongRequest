@@ -233,6 +233,21 @@ interface MetingPicture {
   url?: string;
 }
 
+function metingResultUrl(result: unknown): string | null {
+  if (typeof result === 'string') return result;
+  if (Array.isArray(result)) {
+    for (const value of result) {
+      const url = metingResultUrl(value);
+      if (url) return url;
+    }
+    return null;
+  }
+  if (!result || typeof result !== 'object') return null;
+  const value = result as { url?: unknown; data?: unknown };
+  if (typeof value.url === 'string') return value.url;
+  return metingResultUrl(value.data);
+}
+
 async function validExternalUrl(value: string | null): Promise<string | null> {
   if (!value) return null;
   try {
@@ -319,10 +334,19 @@ async function metingRedirect(
         redirect: 'manual',
       });
       const location = response.headers.get('location');
+      const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
       const url = location
         ? await validExternalUrl(new URL(location, response.url).toString())
         : null;
       if (response.status >= 300 && response.status < 400 && url) return url;
+      if (
+        response.ok &&
+        ((params.type === 'url' && contentType.startsWith('audio/')) ||
+          (params.type === 'pic' && contentType.startsWith('image/')))
+      ) {
+        const directUrl = await validExternalUrl(response.url);
+        if (directUrl) return directUrl;
+      }
       logError('Meting 未收到3xx重定向', undefined, {
         meting: {
           api: metingApiAddress(api.baseUrl),
@@ -554,7 +578,7 @@ export async function fetchAudioUrl(source: SourceId, platformId: string): Promi
       id: platformId,
       br: '320',
     });
-    return await validExternalUrl(result.url ?? null);
+    return await validExternalUrl(metingResultUrl(result));
   } catch (error) {
     if (error instanceof SourceError && error.apiUrl) {
       logError('Meting 未返回音频地址', error, {
@@ -614,7 +638,7 @@ export async function fetchCoverUrl(
       id: picId,
       cover: size,
     });
-    return await validExternalUrl(result.url ?? null);
+    return await validExternalUrl(metingResultUrl(result));
   } catch {
     return null;
   }
