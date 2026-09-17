@@ -223,6 +223,9 @@ interface MetingSong {
   url?: string;
   lyric_id?: string | number;
   source?: string;
+  duration?: string | number;
+  duration_ms?: string | number;
+  interval?: string | number;
 }
 
 interface MetingUrl {
@@ -419,6 +422,22 @@ function platformId(song: MetingSong): string | undefined {
   return id == null ? undefined : String(id);
 }
 
+function durationMsFromSong(song: MetingSong): number | null {
+  const raw = song.duration_ms ?? song.duration ?? song.interval;
+  if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+  const value = String(raw).trim();
+  const clock = value.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/);
+  if (clock) {
+    const hours = Number(clock[1] ?? 0);
+    const minutes = Number(clock[2]);
+    const seconds = Number(clock[3]);
+    return (hours * 3600 + minutes * 60 + seconds) * 1000;
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.round(numeric < 10_000 ? numeric * 1000 : numeric);
+}
+
 function songCoverUrl(source: SourceId, song: MetingSong): string | undefined {
   const picId = song.pic_id ?? idFromMetingUrl(song.pic);
   if (picId != null) return coverProxyUrl(source, String(picId));
@@ -497,7 +516,7 @@ async function loadSearchSongs(
         title: song.name ?? song.title ?? '',
         artist: formatArtist(song.artist, song.author),
         album: song.album || undefined,
-        durationMs: await detectAudioDurationMs(source, id, song.url),
+        durationMs: durationMsFromSong(song) ?? (await detectAudioDurationMs(source, id, song.url)),
         coverUrl: songCoverUrl(source, song),
         vip: false,
       };
@@ -551,7 +570,7 @@ async function fetchDetail(
       title: song.name ?? song.title ?? '',
       artist: formatArtist(song.artist, song.author),
       album: song.album || undefined,
-      durationMs: await detectAudioDurationMs(source, id, song.url),
+      durationMs: durationMsFromSong(song) ?? (await detectAudioDurationMs(source, id, song.url)),
       coverUrl: songCoverUrl(source, song),
       vip: false,
     };
@@ -598,9 +617,9 @@ export async function detectAudioDurationMs(
   platformId: string,
   signedUrl?: string
 ): Promise<number> {
-  const audioUrl = signedUrl
-    ? await resolveAudioUrl(signedUrl)
-    : await fetchAudioUrl(source, platformId);
+  const audioUrl =
+    (signedUrl ? await resolveAudioUrl(signedUrl) : null) ??
+    (await fetchAudioUrl(source, platformId));
   if (!audioUrl) return 0;
   try {
     const { stdout } = await ffprobe(

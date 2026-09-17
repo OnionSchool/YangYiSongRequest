@@ -58,6 +58,7 @@ export async function buildPublicDay(date: string) {
               title: row.title,
               artist: row.artist,
               coverUrl: row.coverUrl ?? undefined,
+              durationMs: row.durationMs,
             };
           });
         return {
@@ -65,6 +66,7 @@ export async function buildPublicDay(date: string) {
           slotName: slot.name,
           startTime: slot.startTime,
           endTime: slot.endTime,
+          totalMs: songs.reduce((total, song) => total + Math.max(0, song.durationMs), 0),
           songs,
         };
       })

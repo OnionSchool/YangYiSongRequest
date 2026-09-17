@@ -81,6 +81,7 @@ export interface PlaylistSong {
   title: string;
   artist: string;
   coverUrl?: string;
+  durationMs: number;
   orderNo: number;
   playTime: string;
 }
@@ -90,6 +91,7 @@ export interface PlaylistSlot {
   slotName: string;
   startTime: string;
   endTime: string;
+  totalMs: number;
   songs: PlaylistSong[];
 }
 
