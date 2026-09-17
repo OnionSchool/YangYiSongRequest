@@ -166,6 +166,9 @@ async function resolveDownloadUrl(source: string, platformId: string): Promise<U
     }
   }
 
+  if (source === 'qq') {
+    throw badRequest('DOWNLOAD_UNAVAILABLE', 'QQ 音乐未提供该歌曲的下载资源，请尝试其他歌曲或音源');
+  }
   throw badRequest('DOWNLOAD_UNAVAILABLE', '该音源无法获取下载地址');
 }
 

@@ -347,6 +347,10 @@ async function metingRedirect(
         const directUrl = await validExternalUrl(response.url);
         if (directUrl) return directUrl;
       }
+      if (response.ok && contentType.includes('json')) {
+        const jsonUrl = await validExternalUrl(metingResultUrl(await response.json()));
+        if (jsonUrl) return jsonUrl;
+      }
       logError('Meting 未收到3xx重定向', undefined, {
         meting: {
           api: metingApiAddress(api.baseUrl),
