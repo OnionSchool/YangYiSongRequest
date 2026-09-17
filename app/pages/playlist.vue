@@ -13,17 +13,23 @@ const playlist = ref<PlaylistDay | null>(null);
 const loading = ref(false);
 const failure = ref<string | null>(null);
 const today = computed(() => isoDate(clock.serverNow));
+let loadSequence = 0;
 
 async function load() {
+  const sequence = ++loadSequence;
+  const date = selectedDate.value;
   loading.value = true;
   failure.value = null;
   try {
-    playlist.value = await fetchPlaylistDate(selectedDate.value);
+    const result = await fetchPlaylistDate(date);
+    if (sequence !== loadSequence) return;
+    playlist.value = result;
   } catch (error: any) {
+    if (sequence !== loadSequence) return;
     playlist.value = null;
     failure.value = error.message ?? '载入失败';
   } finally {
-    loading.value = false;
+    if (sequence === loadSequence) loading.value = false;
   }
 }
 

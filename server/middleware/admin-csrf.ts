@@ -1,4 +1,4 @@
-import { createError, getCookie, getRequestHeader, getRequestURL } from 'h3';
+import { createError, defineEventHandler, getCookie, getRequestHeader, getRequestURL } from 'h3';
 import { getDebugSession, isDebugMode } from '../utils/admin-auth';
 import { verifyToken } from '../utils/auth';
 
@@ -6,6 +6,8 @@ export default defineEventHandler((event) => {
   if (
     !event.path.startsWith('/api/admin/') ||
     event.path === '/api/admin/login' ||
+    event.path === '/api/admin/password/reset/request' ||
+    event.path === '/api/admin/password/reset/confirm' ||
     ['GET', 'HEAD', 'OPTIONS'].includes(event.method)
   )
     return;

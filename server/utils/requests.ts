@@ -30,12 +30,11 @@ export const isUniqueViolation = (err: unknown): boolean =>
   (err as { code?: unknown }).code === 'SQLITE_CONSTRAINT_UNIQUE';
 
 export function normalizeIdentity(
-  input: any,
+  input: Record<string, unknown>,
   required: boolean,
   classCounts: Record<Grade, number>
-): any | null {
-  const filled =
-    input.grade != null || input.classNo != null || (input.requesterName ?? '').trim() !== '';
+): { grade: Grade; classNo: number; requesterName: string } | null {
+  const filled = input.grade != null || input.classNo != null || input.requesterName != null;
 
   if (!required) {
     if (filled) throw badRequest('IDENTITY_NOT_REQUIRED', '现在是匿名点歌，不用填身份');
@@ -49,7 +48,8 @@ export function normalizeIdentity(
   if (typeof classNo !== 'number' || !Number.isInteger(classNo) || classNo < 1 || classNo > max) {
     throw badRequest('BAD_CLASS', `${GRADE_LABELS[grade]}的班级要在 1 到 ${max} 之间`);
   }
-  const requesterName = (input.requesterName ?? '').trim();
+  if (typeof input.requesterName !== 'string') throw badRequest('BAD_NAME', '姓名填 2 到 12 个字');
+  const requesterName = input.requesterName.trim();
   if (requesterName.length < 2 || requesterName.length > 12) {
     throw badRequest('BAD_NAME', '姓名填 2 到 12 个字');
   }
@@ -72,7 +72,7 @@ export function assertDailyLimits(ipUsed: number, identityUsed: number | null): 
 }
 
 export async function submitRequest(
-  input: any,
+  input: Record<string, unknown>,
   ip: string,
   userAgent?: string
 ): Promise<{ queryCode: string }> {
@@ -81,23 +81,40 @@ export async function submitRequest(
 
   const source = getSource(input.source);
   if (!source) throw badRequest('BAD_SOURCE', '音源不对');
-  if (!input.platformId?.trim()) throw badRequest('BAD_SONG', '没选歌');
+  if (typeof input.platformId !== 'string' || !input.platformId.trim())
+    throw badRequest('BAD_SONG', '没选歌');
 
   const identity = normalizeIdentity(input, site.requireIdentity, site.classCounts);
 
   // Prefer server-verified metadata; fall back to client data for sources without detail API (e.g. kugou)
   let song = await source.detail(input.platformId.trim());
   if (!song) {
-    // Accept client-provided metadata as fallback
-    if (!input.title?.trim()) throw notFound('SONG_NOT_FOUND', '这首歌查不到了，换一首试试');
+    if (input.source !== 'kugou') throw notFound('SONG_NOT_FOUND', '这首歌查不到了，换一首试试');
+    if (typeof input.title !== 'string' || !input.title.trim() || input.title.trim().length > 160) {
+      throw notFound('SONG_NOT_FOUND', '这首歌查不到了，换一首试试');
+    }
+    const artist = typeof input.artist === 'string' ? input.artist.trim() : '';
+    const album = typeof input.album === 'string' ? input.album.trim() : '';
+    const durationMs = Number(input.durationMs);
+    const coverUrl = typeof input.coverUrl === 'string' ? input.coverUrl : undefined;
+    if (
+      artist.length > 160 ||
+      album.length > 160 ||
+      !Number.isFinite(durationMs) ||
+      durationMs < 0 ||
+      durationMs > 30 * 60_000 ||
+      (coverUrl && coverUrl.length > 2048)
+    ) {
+      throw badRequest('BAD_SONG', '歌曲信息无效');
+    }
     song = {
-      source: input.source,
+      source: 'kugou',
       platformId: input.platformId.trim(),
       title: input.title.trim(),
-      artist: input.artist?.trim() || '未知歌手',
-      album: input.album?.trim() || undefined,
-      durationMs: Number(input.durationMs) || 0,
-      coverUrl: input.coverUrl || undefined,
+      artist: artist || '未知歌手',
+      album: album || undefined,
+      durationMs,
+      coverUrl,
       vip: false,
     };
   }

@@ -32,7 +32,7 @@ const classes = computed(() =>
 
 // 换歌就重置，别把上一首的结果留在弹窗里
 watch(
-  () => props.song?.platformId,
+  () => (props.song ? `${props.song.source}:${props.song.platformId}` : null),
   () => {
     code.value = null;
     failure.value = null;

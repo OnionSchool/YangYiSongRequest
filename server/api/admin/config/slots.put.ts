@@ -59,18 +59,16 @@ export default defineEventHandler(async (event) => {
         })
         .where(sql`"id" = ${id}`);
     } else {
-      await db
-        .insert(broadcastSlot)
-        .values({
-          id,
-          name: s.name,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          maxCount: s.maxCount ?? null,
-          maxMs: s.maxMs ?? null,
-          sortOrder: i,
-          enabled: s.enabled ? 1 : 0,
-        });
+      await db.insert(broadcastSlot).values({
+        id,
+        name: s.name,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        maxCount: s.maxCount ?? null,
+        maxMs: s.maxMs ?? null,
+        sortOrder: i,
+        enabled: s.enabled ? 1 : 0,
+      });
     }
   }
   if (removedIds.length > 0)
@@ -117,10 +115,10 @@ function isSlot(value: unknown): value is {
     typeof slot.name === 'string' &&
     slot.name.trim().length > 0 &&
     typeof slot.startTime === 'string' &&
-    /^\d{2}:\d{2}$/.test(slot.startTime) &&
+    isTime(slot.startTime) &&
     typeof slot.endTime === 'string' &&
-    /^\d{2}:\d{2}$/.test(slot.endTime) &&
-    slot.startTime < slot.endTime &&
+    isTime(slot.endTime) &&
+    toMinutes(slot.startTime) < toMinutes(slot.endTime) &&
     (slot.maxCount === undefined ||
       slot.maxCount === null ||
       (typeof slot.maxCount === 'number' &&
@@ -131,4 +129,13 @@ function isSlot(value: unknown): value is {
       (typeof slot.maxMs === 'number' && Number.isInteger(slot.maxMs) && slot.maxMs > 0)) &&
     typeof slot.enabled === 'boolean'
   );
+}
+
+function isTime(value: string): boolean {
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function toMinutes(value: string): number {
+  const [hour, minute] = value.split(':').map(Number);
+  return hour * 60 + minute;
 }

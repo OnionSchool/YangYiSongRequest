@@ -49,16 +49,27 @@ export const usePlayer = defineStore('player', () => {
   async function toggle(source: SourceId, platformId: string): Promise<void> {
     const el = element();
     if (isCurrent(source, platformId)) {
-      if (el.paused) await el.play().catch(() => undefined);
-      else el.pause();
+      if (el.paused) {
+        await el.play().catch(() => {
+          if (isCurrent(source, platformId)) {
+            loading.value = false;
+            error.value = '这首暂时无法播放';
+          }
+        });
+      } else el.pause();
       return;
     }
     error.value = null;
     loading.value = true;
     currentKey.value = keyOf(source, platformId);
     el.src = streamUrl(source, platformId);
-    // 失败由 error 事件统一处理，这里不重复报
-    await el.play().catch(() => undefined);
+    await el.play().catch(() => {
+      if (isCurrent(source, platformId)) {
+        loading.value = false;
+        playing.value = false;
+        error.value = '这首暂时无法播放';
+      }
+    });
   }
 
   function stop(): void {

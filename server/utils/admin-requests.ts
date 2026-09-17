@@ -8,7 +8,6 @@ import {
   getEffectiveSlots,
   updateScheduleVersion,
   validateSchedulableDate,
-  validateSlotCapacity,
   isValidDate,
 } from './schedule';
 import { isUniqueViolation, newQueryCode } from './requests';
@@ -117,25 +116,31 @@ export async function scheduleRequest(
   actorId: string,
   expectedVersion?: number
 ) {
-  const req = await db.select().from(songRequest).where(eq(songRequest.id, requestId)).limit(1);
-  if (req.length === 0) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
-  if (req[0].status !== 'PENDING') throw badRequest('REQUEST_NOT_PENDING', '该请求不可再次排期');
   await validateSchedulableDate(playDate);
   const slot = (await getEffectiveSlots(playDate)).find((item) => item.id === slotId);
   if (!slot) throw notFound('SLOT_NOT_FOUND', '该日期没有启用的目标时段');
-  const capacity = await validateSlotCapacity(playDate, slot, req[0].durationMs);
   const scheduleId = `sch_${randomBytes(8).toString('hex')}`;
   const now = Math.floor(Date.now() / 1000);
   const result = sqlite.transaction(() => {
+    const req = sqlite
+      .prepare('SELECT "status", "durationMs" FROM "SongRequest" WHERE "id" = ?')
+      .get(requestId) as { status: string; durationMs: number } | undefined;
+    if (!req) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
+    if (req.status !== 'PENDING') throw badRequest('REQUEST_NOT_PENDING', '该请求不可再次排期');
     const existing = sqlite
       .prepare('SELECT "id" FROM "Schedule" WHERE "requestId" = ?')
       .get(requestId);
     if (existing) throw badRequest('REQUEST_ALREADY_SCHEDULED', '该请求已经排期');
     const currentCount = sqlite
       .prepare(
-        'SELECT COUNT(*) AS "count", COALESCE(MAX(s."orderNo"), 0) AS "maxOrderNo", COALESCE(SUM(r."durationMs"), 0) AS "totalMs" FROM "Schedule" s JOIN "SongRequest" r ON r."id" = s."requestId" WHERE s."playDate" = ? AND s."slotId" = ?'
+        'SELECT COUNT(*) AS "count", COALESCE(MAX(s."orderNo"), 0) AS "maxOrderNo", COALESCE(SUM(r."durationMs"), 0) AS "totalMs", SUM(CASE WHEN r."durationMs" <= 0 THEN 1 ELSE 0 END) AS "incompleteCount" FROM "Schedule" s JOIN "SongRequest" r ON r."id" = s."requestId" WHERE s."playDate" = ? AND s."slotId" = ?'
       )
-      .get(playDate, slotId) as { count: number; maxOrderNo: number; totalMs: number };
+      .get(playDate, slotId) as {
+      count: number;
+      maxOrderNo: number;
+      totalMs: number;
+      incompleteCount: number | null;
+    };
     const orderNo = Number(currentCount.maxOrderNo) + 1;
     if (slot.maxCount !== null && orderNo > slot.maxCount) {
       throw badRequest('SLOT_COUNT_EXCEEDED', `已超出该时段上限（${slot.maxCount}首）`);
@@ -147,7 +152,8 @@ export async function scheduleRequest(
         Number(slot.startTime.slice(0, 2)) * 60 -
         Number(slot.startTime.slice(3))) *
         60_000;
-    if (req[0].durationMs > 0 && Number(currentCount.totalMs) + req[0].durationMs > limitMs) {
+    const durationIncomplete = req.durationMs <= 0 || Number(currentCount.incompleteCount) > 0;
+    if (req.durationMs > 0 && Number(currentCount.totalMs) + req.durationMs > limitMs) {
       throw badRequest('SLOT_DURATION_EXCEEDED', '该时段已容纳不下这首歌');
     }
     const version = updateScheduleVersion(playDate, expectedVersion);
@@ -156,36 +162,35 @@ export async function scheduleRequest(
         'INSERT INTO "Schedule" ("id", "requestId", "playDate", "slotId", "orderNo", "createdAt") VALUES (?, ?, ?, ?, ?, ?)'
       )
       .run(scheduleId, requestId, playDate, slotId, orderNo, now);
-    sqlite
+    const updated = sqlite
       .prepare(
-        'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = NULL WHERE "id" = ?'
+        'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = NULL WHERE "id" = ? AND "status" = ?'
       )
-      .run('SCHEDULED', 'PENDING_DOWNLOAD', now, actorId, requestId);
-    return { orderNo, version };
+      .run('SCHEDULED', 'PENDING_DOWNLOAD', now, actorId, requestId, 'PENDING');
+    if (updated.changes !== 1) throw badRequest('REQUEST_NOT_PENDING', '该请求不可再次排期');
+    return { orderNo, version, durationIncomplete };
   })();
   await writeAudit(actorId, 'request.schedule', requestId, {
     playDate,
     slotId,
     orderNo: result.orderNo,
   });
-  return { ...result, durationIncomplete: capacity.durationIncomplete };
+  return result;
 }
 
 export async function rejectRequest(requestId: string, reason: string, actorId: string) {
-  const req = await db.select().from(songRequest).where(eq(songRequest.id, requestId)).limit(1);
-  if (req.length === 0) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
-  if (req[0].status !== 'PENDING') throw badRequest('REQUEST_NOT_PENDING', '该请求不可驳回');
-
-  await db
-    .update(songRequest)
-    .set({
-      status: 'REJECTED',
-      rejectReason: reason,
-      reviewedAt: Math.floor(Date.now() / 1000),
-      reviewedById: actorId,
-      finalizedAt: Math.floor(Date.now() / 1000),
-    })
-    .where(eq(songRequest.id, requestId));
+  const now = Math.floor(Date.now() / 1000);
+  sqlite.transaction(() => {
+    const updated = sqlite
+      .prepare(
+        'UPDATE "SongRequest" SET "status" = ?, "rejectReason" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = ? WHERE "id" = ? AND "status" = ?'
+      )
+      .run('REJECTED', reason, now, actorId, now, requestId, 'PENDING');
+    if (updated.changes === 1) return;
+    const exists = sqlite.prepare('SELECT 1 FROM "SongRequest" WHERE "id" = ?').get(requestId);
+    if (!exists) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
+    throw badRequest('REQUEST_NOT_PENDING', '该请求不可驳回');
+  })();
 
   await writeAudit(actorId, 'request.reject', requestId, { reason });
   return { ok: true as const };

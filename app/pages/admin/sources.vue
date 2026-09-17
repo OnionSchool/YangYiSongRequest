@@ -29,6 +29,7 @@ const testResults = ref<Array<{ source: SourceId; ok: boolean; detail: string }>
 const templates = ref<DownloadTemplates>({ netease: '', qq: '', kugou: '' });
 const downloadMode = ref<DownloadMode>('proxy');
 const configMessage = ref<string | null>(null);
+const loadMessage = ref<string | null>(null);
 const apiMessage = ref<string | null>(null);
 const editingId = ref<string | null>(null);
 const newApi = ref({
@@ -56,6 +57,7 @@ const apiFormTitle = computed(() => (editingId.value ? '编辑 Meting API' : '�
 
 async function load() {
   loading.value = true;
+  loadMessage.value = null;
   const [health, downloadConfig, metingConfig] = await Promise.allSettled([
     checkSources(),
     readDownloadTemplates(),
@@ -67,6 +69,10 @@ async function load() {
     downloadMode.value = downloadConfig.value.mode;
   }
   if (metingConfig.status === 'fulfilled') apis.value = metingConfig.value.items;
+  const failures = [health, downloadConfig, metingConfig].filter(
+    (result) => result.status === 'rejected'
+  );
+  if (failures.length > 0) loadMessage.value = '部分配置加载失败，请刷新后重试';
   loading.value = false;
 }
 
@@ -232,6 +238,12 @@ onMounted(load);
     </div>
 
     <template v-else>
+      <p
+        v-if="loadMessage"
+        class="rounded-control border border-orange/40 bg-orange/10 px-3 py-2 text-sm text-orange-deep"
+      >
+        {{ loadMessage }}
+      </p>
       <section class="paper-card p-5 space-y-4">
         <div>
           <h2 class="font-medium">{{ apiFormTitle }}</h2>

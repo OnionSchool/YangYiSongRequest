@@ -1,4 +1,11 @@
-import { defineEventHandler, getRequestHeader, readBody, setHeader } from 'h3';
+import {
+  createError,
+  defineEventHandler,
+  getRequestHeader,
+  getRequestURL,
+  readBody,
+  setHeader,
+} from 'h3';
 import { setAuditContext, writeAudit } from '../../../../utils/audit';
 import { confirmPasswordReset } from '../../../../utils/password-reset';
 import { badRequest } from '../../../../utils/errors';
@@ -6,6 +13,10 @@ import { getClientIp } from '../../../../utils/request-ip';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
+  const origin = getRequestHeader(event, 'origin');
+  if (!origin || origin !== getRequestURL(event).origin) {
+    throw createError({ statusCode: 403, statusMessage: 'Forbidden', message: '请求来源无效' });
+  }
   const body = await readBody(event);
   const username = typeof body?.username === 'string' ? body.username.trim() : '';
   const code = typeof body?.code === 'string' ? body.code.trim() : '';

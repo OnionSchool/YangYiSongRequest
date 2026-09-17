@@ -4,16 +4,20 @@ import { badRequest, tooMany } from './errors';
 
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 const REQUESTS_PER_HOUR = 5;
+const CHALLENGES_PER_HOUR = 30;
 const MAX_FAILED_ATTEMPTS = 5;
 const FAILURE_COOLDOWN_SECONDS = 15 * 60;
+let lastCleanupAt = 0;
 
 export interface RequestContext {
+  [key: string]: unknown;
   source: unknown;
   platformId: unknown;
   title: unknown;
   artist: unknown;
   album: unknown;
   durationMs: unknown;
+  coverUrl: unknown;
   grade: unknown;
   classNo: unknown;
   requesterName: unknown;
@@ -32,6 +36,7 @@ export function requestContextHash(input: RequestContext): string {
       artist: typeof input.artist === 'string' ? input.artist.trim() : '',
       album: typeof input.album === 'string' ? input.album.trim() : '',
       durationMs: Number(input.durationMs) || 0,
+      coverUrl: typeof input.coverUrl === 'string' ? input.coverUrl.trim() : '',
       grade: typeof input.grade === 'string' ? input.grade : '',
       classNo: Number(input.classNo) || 0,
       requesterName: typeof input.requesterName === 'string' ? input.requesterName.trim() : '',
@@ -59,32 +64,56 @@ export function createPowChallenge(
     throw badRequest('BAD_CHALLENGE_CONTEXT', '提交信息无效');
 
   const now = Math.floor(Date.now() / 1000);
+  if (now - lastCleanupAt >= 3600) {
+    cleanupRequestProtection(now);
+    lastCleanupAt = now;
+  }
   const hourStart = now - (now % 3600);
-  const key = `ip:${ipHash(ip)}`;
-  const record = sqlite
-    .prepare(
-      'SELECT "windowStart", "count", "blockedUntil" FROM "RequestRateLimit" WHERE "key" = ?'
-    )
-    .get(key) as { windowStart: number; count: number; blockedUntil: number | null } | undefined;
-  if (record?.blockedUntil && record.blockedUntil > now) {
-    throw tooMany('POW_COOLDOWN', '验证失败次数过多，请稍后再试');
-  }
-  const count = record?.windowStart === hourStart ? record.count : 0;
-  if (count >= REQUESTS_PER_HOUR) {
-    throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试', {
-      limit: REQUESTS_PER_HOUR,
-      window: 'hour',
-    });
-  }
+  const requestKey = `ip:${ipHash(ip)}`;
+  const challengeKey = `challenge:${ipHash(ip)}`;
+  const result = sqlite.transaction(() => {
+    const record = sqlite
+      .prepare(
+        'SELECT "windowStart", "count", "blockedUntil" FROM "RequestRateLimit" WHERE "key" = ?'
+      )
+      .get(requestKey) as
+      { windowStart: number; count: number; blockedUntil: number | null } | undefined;
+    if (record?.blockedUntil && record.blockedUntil > now) {
+      throw tooMany('POW_COOLDOWN', '验证失败次数过多，请稍后再试');
+    }
+    const count = record?.windowStart === hourStart ? record.count : 0;
+    if (count >= REQUESTS_PER_HOUR) {
+      throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试', {
+        limit: REQUESTS_PER_HOUR,
+        window: 'hour',
+      });
+    }
+    const challengeRate = sqlite
+      .prepare('SELECT "windowStart", "count" FROM "RequestRateLimit" WHERE "key" = ?')
+      .get(challengeKey) as { windowStart: number; count: number } | undefined;
+    const issued = challengeRate?.windowStart === hourStart ? challengeRate.count : 0;
+    if (issued >= CHALLENGES_PER_HOUR) {
+      throw tooMany('CHALLENGE_RATE_LIMIT', '验证请求过于频繁，请稍后再试', {
+        limit: CHALLENGES_PER_HOUR,
+        window: 'hour',
+      });
+    }
 
-  const challengeId = `pow_${randomUUID().replace(/-/g, '')}`;
-  const expiresAt = now + CHALLENGE_TTL_SECONDS;
-  sqlite
-    .prepare(
-      'INSERT INTO "PowChallenge" ("id", "contextHash", "ipHash", "difficulty", "expiresAt") VALUES (?, ?, ?, ?, ?)'
-    )
-    .run(challengeId, contextHash, ipHash(ip), difficultyFor(count), expiresAt);
-  return { challengeId, difficulty: difficultyFor(count), expiresAt };
+    const challengeId = `pow_${randomUUID().replace(/-/g, '')}`;
+    const expiresAt = now + CHALLENGE_TTL_SECONDS;
+    sqlite
+      .prepare(
+        'INSERT INTO "PowChallenge" ("id", "contextHash", "ipHash", "difficulty", "expiresAt") VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(challengeId, contextHash, ipHash(ip), difficultyFor(count), expiresAt);
+    sqlite
+      .prepare(
+        'INSERT INTO "RequestRateLimit" ("key", "windowStart", "count", "blockedUntil") VALUES (?, ?, 1, NULL) ON CONFLICT("key") DO UPDATE SET "windowStart" = excluded."windowStart", "count" = CASE WHEN "RequestRateLimit"."windowStart" = excluded."windowStart" THEN "RequestRateLimit"."count" + 1 ELSE 1 END, "blockedUntil" = NULL'
+      )
+      .run(challengeKey, hourStart);
+    return { challengeId, difficulty: difficultyFor(count), expiresAt };
+  });
+  return result();
 }
 
 export function verifyAndConsumePow(
@@ -184,8 +213,7 @@ export function verifyAndConsumePow(
   transaction();
 }
 
-export function cleanupRequestProtection(): void {
-  const now = Math.floor(Date.now() / 1000);
+export function cleanupRequestProtection(now = Math.floor(Date.now() / 1000)): void {
   sqlite.prepare('DELETE FROM "PowChallenge" WHERE "expiresAt" < ?').run(now - 24 * 60 * 60);
   sqlite.prepare('DELETE FROM "PowNonce" WHERE "usedAt" < ?').run(now - 24 * 60 * 60);
   sqlite

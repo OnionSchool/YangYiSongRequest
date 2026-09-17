@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db, sqlite } from './db';
 import { adminUser } from './schema';
 import { badRequest } from './errors';
@@ -59,27 +59,29 @@ export async function login(
   password: string,
   ip: string
 ): Promise<{ token: string; session: AdminSession }> {
-  const cutoff = now() - LOGIN_WINDOW_SECONDS;
-  const attempts = sqlite
-    .prepare(
-      'SELECT COUNT(*) AS count FROM "LoginAttempt" WHERE "failedAt" >= ? AND ("username" = ? OR "ip" = ?)'
-    )
-    .get(cutoff, username, ip) as { count: number };
-  if (attempts.count >= LOGIN_MAX_FAILURES) {
-    throw badRequest('LOGIN_COOLDOWN', '登录失败次数过多，请 15 分钟后重试');
-  }
-  const user = await db.query.adminUser.findFirst({ where: eq(adminUser.username, username) });
-  if (!user || user.disabled || !verifyPassword(password, user.passwordHash)) {
+  const attemptId = crypto.randomUUID();
+  const current = now();
+  sqlite.transaction(() => {
+    const attempts = sqlite
+      .prepare(
+        'SELECT COUNT(*) AS count FROM "LoginAttempt" WHERE "failedAt" >= ? AND ("username" = ? OR "ip" = ?)'
+      )
+      .get(current - LOGIN_WINDOW_SECONDS, username, ip) as { count: number };
+    if (attempts.count >= LOGIN_MAX_FAILURES) {
+      throw badRequest('LOGIN_COOLDOWN', '登录失败次数过多，请 15 分钟后重试');
+    }
     sqlite
       .prepare(
         'INSERT INTO "LoginAttempt" ("id", "username", "ip", "failedAt") VALUES (?, ?, ?, ?)'
       )
-      .run(crypto.randomUUID(), username, ip, now());
+      .run(attemptId, username, ip, current);
+  })();
+  const user = await db.query.adminUser.findFirst({ where: eq(adminUser.username, username) });
+  if (!user || user.disabled || !verifyPassword(password, user.passwordHash)) {
     throw badRequest('BAD_CREDENTIALS', '账号或密码错误');
   }
   const token = newToken();
   const csrfToken = newToken();
-  const current = now();
   sqlite.prepare('DELETE FROM "LoginAttempt" WHERE "username" = ? OR "ip" = ?').run(username, ip);
   sqlite
     .prepare(
@@ -221,22 +223,10 @@ export async function updateAdminUser(
   userId: string,
   updates: { role?: AdminRole; disabled?: boolean; password?: string; displayName?: string | null }
 ): Promise<void> {
-  const user = await db.query.adminUser.findFirst({ where: eq(adminUser.id, userId) });
-  if (!user) throw badRequest('USER_NOT_FOUND', '用户不存在');
   if (updates.role && !isAdminRole(updates.role))
     throw badRequest('INVALID_ROLE', '无效的管理员角色');
   if (updates.password) assertPassword(updates.password);
   const normalizedDisplayName = normalizeDisplayName(updates.displayName);
-  const removesSuper =
-    user.role === 'SUPER' && (updates.disabled || (updates.role && updates.role !== 'SUPER'));
-  if (removesSuper) {
-    const activeSupers = await db
-      .select({ id: adminUser.id })
-      .from(adminUser)
-      .where(and(eq(adminUser.role, 'SUPER'), eq(adminUser.disabled, 0)));
-    if (activeSupers.length <= 1)
-      throw badRequest('LAST_SUPER', '不能停用或降级最后一个启用的超级管理员');
-  }
   const patch: {
     role?: AdminRole;
     disabled?: number;
@@ -250,7 +240,32 @@ export async function updateAdminUser(
   if (normalizedDisplayName !== undefined) patch.displayName = normalizedDisplayName;
   if (updates.role || updates.disabled !== undefined || updates.password)
     patch.sessionVersion = sql`${adminUser.sessionVersion} + 1`;
-  if (Object.keys(patch).length)
-    await db.update(adminUser).set(patch).where(eq(adminUser.id, userId));
+  sqlite.transaction(() => {
+    const user = sqlite
+      .prepare('SELECT "role", "disabled" FROM "AdminUser" WHERE "id" = ?')
+      .get(userId) as { role: string; disabled: number } | undefined;
+    if (!user) throw badRequest('USER_NOT_FOUND', '用户不存在');
+    const removesSuper =
+      user.role === 'SUPER' && (updates.disabled || (updates.role && updates.role !== 'SUPER'));
+    if (removesSuper) {
+      const activeSupers = sqlite
+        .prepare('SELECT COUNT(*) AS "count" FROM "AdminUser" WHERE "role" = ? AND "disabled" = 0')
+        .get('SUPER') as { count: number };
+      if (activeSupers.count <= 1)
+        throw badRequest('LAST_SUPER', '不能停用或降级最后一个启用的超级管理员');
+    }
+    if (Object.keys(patch).length) {
+      const assignments = Object.entries(patch)
+        .filter(([key]) => key !== 'sessionVersion')
+        .map(([key]) => `"${key}" = ?`);
+      const values = Object.entries(patch)
+        .filter(([key]) => key !== 'sessionVersion')
+        .map(([, value]) => value);
+      if (patch.sessionVersion) assignments.push('"sessionVersion" = "sessionVersion" + 1');
+      sqlite
+        .prepare(`UPDATE "AdminUser" SET ${assignments.join(', ')} WHERE "id" = ?`)
+        .run(...values, userId);
+    }
+  })();
   if (patch.sessionVersion) revokeUserSessions(userId);
 }

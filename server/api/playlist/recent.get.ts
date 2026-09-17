@@ -24,6 +24,7 @@ export async function buildPublicDay(date: string) {
   const slots = await getEffectiveSlots(date);
   const rows = await db
     .select({
+      id: songRequest.id,
       slotId: schedule.slotId,
       orderNo: schedule.orderNo,
       source: songRequest.source,
@@ -32,6 +33,7 @@ export async function buildPublicDay(date: string) {
       artist: songRequest.artist,
       coverUrl: songRequest.coverUrl,
       durationMs: songRequest.durationMs,
+      playbackStatus: songRequest.playbackStatus,
     })
     .from(schedule)
     .innerJoin(songRequest, eq(schedule.requestId, songRequest.id))
@@ -49,6 +51,7 @@ export async function buildPublicDay(date: string) {
             const seconds = hour * 3600 + minute * 60 + Math.floor(elapsedMs / 1000);
             elapsedMs += Math.max(0, row.durationMs);
             return {
+              id: row.id,
               orderNo: row.orderNo,
               playTime: `${String(Math.floor(seconds / 3600) % 24).padStart(2, '0')}:${String(
                 Math.floor(seconds / 60) % 60
@@ -59,6 +62,7 @@ export async function buildPublicDay(date: string) {
               artist: row.artist,
               coverUrl: row.coverUrl ?? undefined,
               durationMs: row.durationMs,
+              playbackStatus: row.playbackStatus,
             };
           });
         return {

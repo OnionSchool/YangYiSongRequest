@@ -30,6 +30,12 @@ const submitted = ref('');
 const active = ref<SourceId>('netease');
 const picked = ref<Song | null>(null);
 const recent = ref<PlaylistDay[]>([]);
+let searchSequence = 0;
+const tabSequences: Record<SourceId, number> = {
+  netease: 0,
+  qq: 0,
+  kugou: 0,
+};
 
 const blank = (): TabState => ({ status: 'idle', songs: [], total: 0, page: 1, message: '' });
 const tabs = reactive<Record<SourceId, TabState>>({
@@ -85,17 +91,20 @@ onMounted(async () => {
 });
 
 /** 三家各发一次、互不阻塞：一家挂了只影响它自己那个 tab */
-async function run(source: SourceId, page: number): Promise<void> {
+async function run(source: SourceId, page: number, sequence: number): Promise<void> {
   const tab = tabs[source];
+  const tabSequence = ++tabSequences[source];
   tab.status = 'loading';
   tab.message = '';
   try {
     const result = await searchSongs(source, submitted.value, page);
+    if (sequence !== searchSequence || tabSequence !== tabSequences[source]) return;
     tab.songs = result.songs;
     tab.total = result.total;
     tab.page = result.page;
     tab.status = 'ready';
   } catch (error) {
+    if (sequence !== searchSequence || tabSequence !== tabSequences[source]) return;
     tab.songs = [];
     tab.status = 'error';
     tab.message = error instanceof ApiError ? error.message : '搜索失败了';
@@ -106,8 +115,9 @@ function search(): void {
   const text = keyword.value.trim();
   if (!text) return;
   submitted.value = text;
+  const sequence = ++searchSequence;
   player.stop();
-  for (const source of SOURCES) void run(source.id, 1);
+  for (const source of SOURCES) void run(source.id, 1, sequence);
 }
 
 const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 20)));
@@ -197,7 +207,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
             type="button"
             class="rounded-control border border-rule px-3 py-1.5 text-sm disabled:opacity-40"
             :disabled="currentTab.page <= 1"
-            @click="run(active, currentTab.page - 1)"
+            @click="run(active, currentTab.page - 1, searchSequence)"
           >
             上一页
           </button>
@@ -208,7 +218,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
             type="button"
             class="rounded-control border border-rule px-3 py-1.5 text-sm disabled:opacity-40"
             :disabled="currentTab.page >= pageCount"
-            @click="run(active, currentTab.page + 1)"
+            @click="run(active, currentTab.page + 1, searchSequence)"
           >
             下一页
           </button>

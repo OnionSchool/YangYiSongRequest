@@ -137,6 +137,7 @@ async function verify() {
                 code = '';
                 error = null;
                 message = null;
+                stopCountdown();
               "
             >
               更换邮箱

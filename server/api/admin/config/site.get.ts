@@ -3,7 +3,7 @@ import { readSite } from '../../../utils/site';
 import { requireAuth } from '../../../utils/admin-auth';
 
 export default defineEventHandler(async (event) => {
-  setHeader(event, 'Cache-Control', 'public, max-age=30');
+  setHeader(event, 'Cache-Control', 'private, no-store');
 
   requireAuth(event);
 

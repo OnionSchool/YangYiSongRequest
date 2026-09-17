@@ -5,6 +5,7 @@ import { fetchExternal } from '../../utils/external-url';
 import { readCachedCover, saveCachedCover } from '../../utils/cover-cache';
 
 const TIMEOUT_MS = 8_000;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const SOURCE_BY_SERVER: Record<string, SourceId> = {
   netease: 'netease',
   tencent: 'qq',
@@ -42,10 +43,28 @@ export default defineEventHandler(async (event) => {
     if (!imageRes.ok || !imageRes.body) {
       throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
     }
-    const body = Buffer.from(await imageRes.arrayBuffer());
-    if (body.length > 5 * 1024 * 1024) {
+    const contentLength = Number(imageRes.headers.get('content-length'));
+    if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
       throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
     }
+    const reader = imageRes.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_IMAGE_BYTES) {
+          await reader.cancel();
+          throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
     const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
     await saveCachedCover(source, id, size, { body, contentType });
     setHeader(event, 'Cache-Control', 'public, max-age=86400, s-maxage=86400');

@@ -82,7 +82,7 @@ const sourceLabel = (id: SourceId) => SOURCES.find((item) => item.id === id)?.la
             <div class="min-w-0 grow">
               <p class="truncate text-sm">
                 {{ song.title }}
-                <span v-if="song.status === 'PLAYED'" class="text-ink-faint">· 已播</span>
+                <span v-if="song.playbackStatus === 'PLAYED'" class="text-ink-faint">· 已播</span>
               </p>
               <p class="truncate text-xs text-ink-soft">
                 {{ song.artist }} · {{ sourceLabel(song.source) }} ·

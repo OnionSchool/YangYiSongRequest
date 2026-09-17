@@ -3,7 +3,7 @@
 
 export type SourceId = 'netease' | 'qq' | 'kugou';
 export type Grade = 'G1' | 'G2' | 'G3';
-export type RequestStatus = 'PENDING' | 'SCHEDULED' | 'REJECTED' | 'CANCELLED';
+export type RequestStatus = 'PENDING' | 'SCHEDULED' | 'REJECTED' | 'CANCELLED' | 'PLAYED';
 
 export const SOURCES: Array<{ id: SourceId; label: string }> = [
   { id: 'netease', label: '网易云音乐' },
@@ -76,6 +76,7 @@ export interface LookupResult {
 }
 
 export interface PlaylistSong {
+  id: string;
   source: SourceId;
   platformId: string;
   title: string;
@@ -84,6 +85,7 @@ export interface PlaylistSong {
   durationMs: number;
   orderNo: number;
   playTime: string;
+  playbackStatus: 'PENDING_DOWNLOAD' | 'DOWNLOADED' | 'PLAYED' | 'PLAYBACK_ERROR';
 }
 
 export interface PlaylistSlot {
@@ -206,6 +208,7 @@ export function requestContextHash(
     artist: body.artist?.trim() ?? '',
     album: body.album?.trim() ?? '',
     durationMs: Number(body.durationMs) || 0,
+    coverUrl: body.coverUrl?.trim() ?? '',
     grade: body.grade ?? '',
     classNo: Number(body.classNo) || 0,
     requesterName: body.requesterName?.trim() ?? '',

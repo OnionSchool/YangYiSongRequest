@@ -37,19 +37,24 @@ const rememberDownloadMode = ref(false);
 const unschedulingId = ref<string | null>(null);
 const pendingUnscheduleId = ref<string | null>(null);
 const admin = useAdmin();
+let loadSequence = 0;
 
 async function load() {
+  const sequence = ++loadSequence;
+  const date = selectedDate.value;
   loading.value = true;
   error.value = null;
   try {
-    const day = await readDay(selectedDate.value);
+    const day = await readDay(date);
+    if (sequence !== loadSequence) return;
     slots.value = day.slots;
     version.value = day.version;
     selectedSongIds.value = [];
   } catch (e: any) {
+    if (sequence !== loadSequence) return;
     error.value = e.message ?? '加载失败';
   } finally {
-    loading.value = false;
+    if (sequence === loadSequence) loading.value = false;
   }
 }
 
@@ -220,12 +225,12 @@ function toggleAllSongs() {
 
 function prevDay() {
   selectedDate.value = shiftDate(selectedDate.value, -1);
-  load();
+  void load();
 }
 
 function nextDay() {
   selectedDate.value = shiftDate(selectedDate.value, 1);
-  load();
+  void load();
 }
 
 function formatDuration(ms: number) {
@@ -336,7 +341,7 @@ onMounted(async () => {
           v-model="selectedDate"
           type="date"
           class="bg-transparent text-sm font-medium outline-none"
-          @change="load()"
+          @change="void load()"
         />
         <span class="text-xs text-ink-faint">{{ dateLabel(selectedDate) }}</span>
       </div>
@@ -363,7 +368,7 @@ onMounted(async () => {
         class="rounded-lg border border-rule px-3 py-2 text-xs text-ink-soft hover:border-ink-faint transition-colors"
         @click="
           selectedDate = today;
-          load();
+          void load();
         "
       >
         今天

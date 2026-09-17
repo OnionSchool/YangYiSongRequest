@@ -14,6 +14,7 @@ definePageMeta({ layout: 'admin' });
 
 const alerts = ref<Alert[]>([]);
 const error = ref<string | null>(null);
+const resolvingId = ref<string | null>(null);
 
 async function load() {
   try {
@@ -24,8 +25,17 @@ async function load() {
 }
 
 async function resolve(id: string) {
-  await apiFetch(`/api/admin/alerts/${id}/resolve`, { method: 'PUT' });
-  alerts.value = alerts.value.filter((alert) => alert.id !== id);
+  if (resolvingId.value) return;
+  resolvingId.value = id;
+  error.value = null;
+  try {
+    await apiFetch(`/api/admin/alerts/${id}/resolve`, { method: 'PUT' });
+    alerts.value = alerts.value.filter((alert) => alert.id !== id);
+  } catch (e: any) {
+    error.value = e.message ?? '操作失败';
+  } finally {
+    resolvingId.value = null;
+  }
 }
 
 onMounted(load);
@@ -63,8 +73,12 @@ onMounted(load);
               {{ new Date(alert.createdAt).toLocaleString() }}
             </p>
           </div>
-          <button class="btn-secondary px-3 py-1.5 text-xs" @click="resolve(alert.id)">
-            标记已处理
+          <button
+            class="btn-secondary px-3 py-1.5 text-xs"
+            :disabled="resolvingId === alert.id"
+            @click="resolve(alert.id)"
+          >
+            {{ resolvingId === alert.id ? '处理中…' : '标记已处理' }}
           </button>
         </div>
       </article>
