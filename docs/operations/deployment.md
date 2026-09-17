@@ -54,6 +54,16 @@ TRUSTED_PROXY_IPS=127.0.0.1,::1
 
 在 Docker 网络中，请填入 Caddy 容器在同一网络内的实际 IP；多个可信代理用英文逗号分隔。未配置时，日志中的地址通常是 Caddy 或 Docker 网桥地址，而不是真实访客 IP。
 
+## Cloudflare CDN
+
+Cloudflare 代理请求会向源站加入 `CF-Connecting-IP`。应用仅在 TCP 连接来自 `TRUSTED_PROXY_IPS` 时读取该头，因此请继续将实际连接应用的 Caddy、Nginx 或 Docker 网桥地址配置为可信代理：
+
+```dotenv
+TRUSTED_PROXY_IPS=127.0.0.1,::1
+```
+
+若 Cloudflare 直接连接应用而中间没有本地代理，必须在防火墙或 Cloudflare Tunnel 中限制源站只接受 Cloudflare 流量，再将实际连接来源加入 `TRUSTED_PROXY_IPS`；不要无条件信任 `CF-Connecting-IP` 或 `X-Forwarded-For`，否则访客可以伪造 IP。
+
 ## 升级
 
 1. 备份数据库。
