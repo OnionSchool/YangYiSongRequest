@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { logError } from './logger';
+import { reserveObjectStorageRead, reserveObjectStorageWrite } from './object-storage-budget';
 
 const MAX_BYTES = 5 * 1024 * 1024;
 const MEMORY_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -25,6 +26,7 @@ function getS3CacheConfig(): S3CacheConfig | null {
       endpoint,
       region,
       forcePathStyle: true,
+      maxAttempts: 1,
       credentials: { accessKeyId, secretAccessKey },
     }),
     bucket,
@@ -139,6 +141,7 @@ export async function readCachedCover(
 
   const request = (async () => {
     try {
+      if (!reserveObjectStorageRead()) return null;
       const response = await s3Cache.client.send(
         new GetObjectCommand({ Bucket: s3Cache.bucket, Key: objectKey(source, id, size) })
       );
@@ -181,10 +184,12 @@ export async function saveCachedCover(
     negativeCache.delete(key);
     writeMemoryCache(key, cover);
     try {
+      const storageKey = objectKey(source, id, size);
+      if (!reserveObjectStorageWrite(storageKey, cover.body.length)) return;
       await s3Cache.client.send(
         new PutObjectCommand({
           Bucket: s3Cache.bucket,
-          Key: objectKey(source, id, size),
+          Key: storageKey,
           Body: cover.body,
           ContentType: cover.contentType,
           CacheControl: 'public, max-age=2592000, immutable',

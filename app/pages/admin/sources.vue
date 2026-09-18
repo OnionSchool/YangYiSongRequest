@@ -6,6 +6,7 @@ import {
   deleteMetingApi,
   readDownloadTemplates,
   readMetingApis,
+  readObjectStorageBudget,
   saveDownloadTemplates,
   testMetingApi,
   updateMetingApi,
@@ -13,6 +14,7 @@ import {
   type DownloadMode,
   type MetingApiRow,
   type MetingCapability,
+  type ObjectStorageBudget,
   type SourceHealthRow,
 } from '~/lib/adminApi';
 import type { SourceId } from '~/lib/api';
@@ -28,6 +30,7 @@ const testing = ref(false);
 const testResults = ref<Array<{ source: SourceId; ok: boolean; detail: string }> | null>(null);
 const templates = ref<DownloadTemplates>({ netease: '', qq: '', kugou: '' });
 const downloadMode = ref<DownloadMode>('proxy');
+const objectStorage = ref<ObjectStorageBudget | null>(null);
 const configMessage = ref<string | null>(null);
 const loadMessage = ref<string | null>(null);
 const apiMessage = ref<string | null>(null);
@@ -58,10 +61,11 @@ const apiFormTitle = computed(() => (editingId.value ? '编辑 Meting API' : '�
 async function load() {
   loading.value = true;
   loadMessage.value = null;
-  const [health, downloadConfig, metingConfig] = await Promise.allSettled([
+  const [health, downloadConfig, metingConfig, storageBudget] = await Promise.allSettled([
     checkSources(),
     readDownloadTemplates(),
     readMetingApis(),
+    readObjectStorageBudget(),
   ]);
   sources.value = health.status === 'fulfilled' ? health.value : [];
   if (downloadConfig.status === 'fulfilled') {
@@ -69,11 +73,24 @@ async function load() {
     downloadMode.value = downloadConfig.value.mode;
   }
   if (metingConfig.status === 'fulfilled') apis.value = metingConfig.value.items;
-  const failures = [health, downloadConfig, metingConfig].filter(
+  if (storageBudget.status === 'fulfilled') objectStorage.value = storageBudget.value;
+  const failures = [health, downloadConfig, metingConfig, storageBudget].filter(
     (result) => result.status === 'rejected'
   );
   if (failures.length > 0) loadMessage.value = '部分配置加载失败，请刷新后重试';
   loading.value = false;
+}
+
+function bytes(value: number): string {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KiB`;
+  if (value < 1024 * 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MiB`;
+  return `${(value / 1024 / 1024 / 1024).toFixed(2)} GiB`;
+}
+
+function percentage(value: number, limit: number): string {
+  if (limit === 0) return '100%';
+  return `${Math.min(100, Math.round((value / limit) * 100))}%`;
 }
 
 function resetApiForm() {
@@ -453,6 +470,74 @@ onMounted(load);
           <span class="text-sm" :class="src.ok ? 'text-green-700' : 'text-red-600'">{{
             src.ok ? '正常' : '异常'
           }}</span>
+        </div>
+      </section>
+
+      <section v-if="objectStorage" class="paper-card p-5 space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="font-medium">对象存储额度守卫</h2>
+            <p class="mt-1 text-sm text-ink-faint">
+              {{
+                objectStorage.enabled
+                  ? `${objectStorage.period} 月度统计，达到上限后自动停止访问对象存储。`
+                  : '尚未配置对象存储。'
+              }}
+            </p>
+          </div>
+          <span
+            class="rounded-full px-2 py-1 text-xs"
+            :class="
+              objectStorage.enabled ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-ink-faint'
+            "
+            >{{ objectStorage.enabled ? '守卫已启用' : '未启用' }}</span
+          >
+        </div>
+        <div v-if="objectStorage.enabled" class="grid gap-4 sm:grid-cols-3">
+          <div
+            v-for="item in [
+              {
+                label: '写入请求',
+                value: objectStorage.classAOperations,
+                limit: objectStorage.classALimit,
+                detail: 'Class A',
+              },
+              {
+                label: '读取请求',
+                value: objectStorage.classBOperations,
+                limit: objectStorage.classBLimit,
+                detail: 'Class B',
+              },
+              {
+                label: '缓存容量',
+                value: objectStorage.trackedBytes,
+                limit: objectStorage.storageLimitBytes - objectStorage.reservedStorageBytes,
+                detail: bytes(objectStorage.trackedBytes),
+              },
+            ]"
+            :key="item.label"
+            class="rounded-lg border border-rule p-3"
+          >
+            <div class="flex items-baseline justify-between gap-2">
+              <p class="text-sm font-medium">{{ item.label }}</p>
+              <span class="text-xs text-ink-faint">{{ item.detail }}</span>
+            </div>
+            <p class="mt-2 text-lg font-semibold">
+              {{ item.label === '缓存容量' ? bytes(item.value) : item.value.toLocaleString() }}
+              <span class="text-xs font-normal text-ink-faint"
+                >/
+                {{
+                  item.label === '缓存容量' ? bytes(item.limit) : item.limit.toLocaleString()
+                }}</span
+              >
+            </p>
+            <div class="mt-2 h-1.5 overflow-hidden rounded-full bg-paper-deep">
+              <div
+                class="h-full rounded-full bg-orange"
+                :style="{ width: percentage(item.value, item.limit) }"
+              />
+            </div>
+          </div>
         </div>
       </section>
 

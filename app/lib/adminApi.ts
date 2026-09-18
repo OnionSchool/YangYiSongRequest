@@ -336,8 +336,21 @@ export const saveScheduleRules = (weekly: ScheduleRule[], overrides: ScheduleRul
 
 export type DownloadTemplates = Record<SourceId, string>;
 export type DownloadMode = 'direct' | 'proxy';
+export interface ObjectStorageBudget {
+  enabled: boolean;
+  period: string;
+  classAOperations: number;
+  classALimit: number;
+  classBOperations: number;
+  classBLimit: number;
+  trackedBytes: number;
+  reservedStorageBytes: number;
+  storageLimitBytes: number;
+}
 export const readDownloadTemplates = () =>
   apiFetch<{ templates: DownloadTemplates; mode: DownloadMode }>('/api/admin/config/downloads');
+export const readObjectStorageBudget = () =>
+  apiFetch<ObjectStorageBudget>('/api/admin/object-storage');
 export const saveDownloadTemplates = (templates: DownloadTemplates, mode: DownloadMode) =>
   put<{ templates: DownloadTemplates; mode: DownloadMode }>('/api/admin/config/downloads', {
     templates,

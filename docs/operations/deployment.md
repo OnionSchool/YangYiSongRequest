@@ -64,6 +64,19 @@ TRUSTED_PROXY_IPS=127.0.0.1,::1
 
 若 Cloudflare 直接连接应用而中间没有本地代理，必须在防火墙或 Cloudflare Tunnel 中限制源站只接受 Cloudflare 流量，再将实际连接来源加入 `TRUSTED_PROXY_IPS`；不要无条件信任 `CF-Connecting-IP` 或 `X-Forwarded-For`，否则访客可以伪造 IP。
 
+## R2 对象存储预算守卫
+
+启用 S3 兼容缓存后，应用会用 SQLite 按 UTC 月份原子统计自身发出的 Class A（写入）和 Class B（读取）请求。默认分别在 90 万和 900 万次停止后续对象存储操作；缓存容量达到 8 GiB 时也会停止写入。封面会继续从内存或音源获取，音频会自动改存本地缓存，因此不会因为额度守卫中断下载。
+
+```dotenv
+S3_MONTHLY_CLASS_A_LIMIT=900000
+S3_MONTHLY_CLASS_B_LIMIT=9000000
+S3_STORAGE_LIMIT_BYTES=8589934592
+S3_STORAGE_RESERVED_BYTES=0
+```
+
+可在后台“音源状态”查看本月用量和受应用管理的缓存容量。该统计仅覆盖应用写入 `audio-cache/`、`cover-cache/` 前缀的对象，建议使用专用 Bucket。多个实例必须共享同一个 SQLite 数据库，才能共同执行同一份额度限制。
+
 ## 升级
 
 1. 备份数据库。

@@ -16,6 +16,11 @@ import { fetchAudioUrl } from './music-sources';
 import type { SourceId } from './domain';
 import { fetchExternal, validateExternalUrl } from './external-url';
 import { logError } from './logger';
+import {
+  releaseObjectStorageObject,
+  reserveObjectStorageRead,
+  reserveObjectStorageWrite,
+} from './object-storage-budget';
 
 const CACHE_DIR = path.join(process.cwd(), 'data', 'audio-cache');
 const DOWNLOAD_TIMEOUT_MS = 20_000;
@@ -43,6 +48,7 @@ function getS3CacheConfig(): S3CacheConfig | null {
       endpoint,
       region,
       forcePathStyle: true,
+      maxAttempts: 1,
       credentials: { accessKeyId, secretAccessKey },
     }),
     bucket,
@@ -126,6 +132,7 @@ async function readCached(requestId: string, title: string): Promise<CachedAudio
   if (!row[0]) return null;
   try {
     const key = s3Key(row[0].filePath);
+    if (key && s3Cache && !reserveObjectStorageRead()) return null;
     const body =
       key && s3Cache
         ? await streamToBuffer(
@@ -217,8 +224,8 @@ async function downloadAudio(
 
 async function saveCached(requestId: string, body: Buffer, mimeType: string): Promise<string> {
   let filePath: string;
-  if (s3Cache) {
-    const key = s3ObjectKey(requestId);
+  const key = s3ObjectKey(requestId);
+  if (s3Cache && reserveObjectStorageWrite(key, body.length)) {
     await s3Cache.client.send(
       new PutObjectCommand({
         Bucket: s3Cache.bucket,
@@ -309,6 +316,7 @@ export async function removeCachedAudio(requestId: string): Promise<void> {
   const key = s3Key(row[0].filePath);
   if (key && s3Cache) {
     await s3Cache.client.send(new DeleteObjectCommand({ Bucket: s3Cache.bucket, Key: key }));
+    releaseObjectStorageObject(key);
   } else {
     await rm(row[0].filePath, { force: true });
   }
