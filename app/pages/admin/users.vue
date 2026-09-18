@@ -5,6 +5,8 @@ import {
   createUser,
   batchCreateUsers,
   patchUser,
+  deleteUser,
+  type AdminRole,
   type AdminUserRow,
 } from '~/lib/adminApi';
 import { ApiError } from '~/lib/api';
@@ -120,6 +122,11 @@ async function doCreate() {
 const editingDisplayNameId = ref<string | null>(null);
 const editingDisplayName = ref('');
 const savingDisplayName = ref(false);
+const editingUsernameId = ref<string | null>(null);
+const editingUsername = ref('');
+const savingUsername = ref(false);
+const updatingRoleId = ref<string | null>(null);
+const deletingUserId = ref<string | null>(null);
 
 function startDisplayNameEdit(user: AdminUserRow) {
   editingDisplayNameId.value = user.id;
@@ -146,6 +153,84 @@ async function saveDisplayName(user: AdminUserRow) {
     error.value = e instanceof ApiError ? e.message : '保存失败';
   } finally {
     savingDisplayName.value = false;
+  }
+}
+
+function startUsernameEdit(user: AdminUserRow) {
+  editingUsernameId.value = user.id;
+  editingUsername.value = user.username;
+}
+
+function cancelUsernameEdit() {
+  editingUsernameId.value = null;
+  editingUsername.value = '';
+}
+
+async function saveUsername(user: AdminUserRow) {
+  const username = editingUsername.value.trim();
+  if (!username) {
+    error.value = '用户名不能为空';
+    return;
+  }
+  if (username === user.username) {
+    cancelUsernameEdit();
+    return;
+  }
+  const previousUsername = user.username;
+  savingUsername.value = true;
+  error.value = null;
+  try {
+    await patchUser(user.id, { username });
+    user.username = username;
+    if (user.displayName === previousUsername) user.displayName = username;
+    cancelUsernameEdit();
+    msg.value = '用户名已保存';
+    setTimeout(() => {
+      msg.value = null;
+    }, 2000);
+  } catch (e: any) {
+    error.value = e instanceof ApiError ? e.message : '保存失败';
+  } finally {
+    savingUsername.value = false;
+  }
+}
+
+async function changeRole(user: AdminUserRow, event: Event) {
+  const select = event.target as HTMLSelectElement;
+  const role = select.value as AdminRole;
+  if (role === user.role) return;
+  updatingRoleId.value = user.id;
+  error.value = null;
+  try {
+    await patchUser(user.id, { role });
+    user.role = role;
+    msg.value = '用户权限已更新';
+    setTimeout(() => {
+      msg.value = null;
+    }, 2000);
+  } catch (e: any) {
+    select.value = user.role;
+    error.value = e instanceof ApiError ? e.message : '权限更新失败';
+  } finally {
+    updatingRoleId.value = null;
+  }
+}
+
+async function removeUser(user: AdminUserRow) {
+  if (!window.confirm(`确定删除账号“${user.username}”吗？此操作不可恢复。`)) return;
+  deletingUserId.value = user.id;
+  error.value = null;
+  try {
+    await deleteUser(user.id);
+    users.value = users.value.filter((item) => item.id !== user.id);
+    msg.value = '账号已删除';
+    setTimeout(() => {
+      msg.value = null;
+    }, 2000);
+  } catch (e: any) {
+    error.value = e instanceof ApiError ? e.message : '删除失败';
+  } finally {
+    deletingUserId.value = null;
   }
 }
 
@@ -420,6 +505,17 @@ wangwu Pass12345678 王五"
             >
               {{ user.role === 'SUPER' ? '超管' : user.role === 'PLANNER' ? '策划' : '技术员' }}
             </span>
+            <select
+              :value="user.role"
+              class="rounded-md border border-rule bg-paper px-1.5 py-0.5 text-[10px] text-ink-soft focus:border-ink-faint focus:outline-none disabled:opacity-50"
+              aria-label="用户权限"
+              :disabled="updatingRoleId === user.id"
+              @change="changeRole(user, $event)"
+            >
+              <option value="PLANNER">策划权限</option>
+              <option value="TECHNICIAN">技术员权限</option>
+              <option value="SUPER">超级管理员</option>
+            </select>
             <span
               v-if="user.disabled"
               class="text-[10px] px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 border border-red-200 font-medium"
@@ -428,22 +524,69 @@ wangwu Pass12345678 王五"
             </span>
           </div>
           <p class="text-xs text-ink-faint mt-0.5">
-            账号：{{ user.username }} · 上次登录：{{ formatDate(user.lastLoginAt) }}
+            <template v-if="editingUsernameId === user.id">
+              <span class="inline-flex items-center gap-1.5 align-middle">
+                账号：
+                <input
+                  v-model="editingUsername"
+                  type="text"
+                  maxlength="64"
+                  class="rounded border border-rule bg-paper px-2 py-0.5 text-xs focus:border-ink-faint focus:outline-none"
+                  aria-label="用户名"
+                  @keyup.enter="saveUsername(user)"
+                  @keyup.escape="cancelUsernameEdit"
+                />
+                <button
+                  type="button"
+                  class="font-medium text-orange-deep disabled:opacity-50"
+                  :disabled="savingUsername"
+                  @click="saveUsername(user)"
+                >
+                  保存
+                </button>
+                <button
+                  type="button"
+                  class="text-ink-faint"
+                  :disabled="savingUsername"
+                  @click="cancelUsernameEdit"
+                >
+                  取消
+                </button>
+              </span>
+            </template>
+            <template v-else>
+              账号：{{ user.username }}
+              <button type="button" class="ml-1 hover:text-ink" @click="startUsernameEdit(user)">
+                修改
+              </button>
+              ·
+            </template>
+            上次登录：{{ formatDate(user.lastLoginAt) }}
           </p>
         </div>
 
-        <!-- Action -->
-        <button
-          class="shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
-          :class="
-            user.disabled
-              ? 'border-green-200 text-green-600 hover:bg-green-50'
-              : 'border-red-200 text-red-600 hover:bg-red-50'
-          "
-          @click="toggleDisabled(user)"
-        >
-          {{ user.disabled ? '启用' : '禁用' }}
-        </button>
+        <div class="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            class="rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
+            :class="
+              user.disabled
+                ? 'border-green-200 text-green-600 hover:bg-green-50'
+                : 'border-red-200 text-red-600 hover:bg-red-50'
+            "
+            @click="toggleDisabled(user)"
+          >
+            {{ user.disabled ? '启用' : '禁用' }}
+          </button>
+          <button
+            type="button"
+            class="rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50"
+            :disabled="deletingUserId === user.id"
+            @click="removeUser(user)"
+          >
+            {{ deletingUserId === user.id ? '删除中…' : '删除' }}
+          </button>
+        </div>
       </div>
 
       <div v-if="users.length === 0" class="px-5 py-12 text-center text-ink-faint">

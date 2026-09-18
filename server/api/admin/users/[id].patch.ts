@@ -19,12 +19,14 @@ export default defineEventHandler(async (event) => {
   }
 
   const body = await readBody<{
+    username?: string;
     role?: 'SUPER' | 'PLANNER' | 'TECHNICIAN';
     disabled?: boolean;
     password?: string;
     displayName?: string | null;
   }>(event);
   const updates = {
+    username: body.username,
     role: body.role,
     disabled: body.disabled,
     password: body.password,
@@ -44,6 +46,7 @@ export default defineEventHandler(async (event) => {
     throw error;
   }
   await writeAudit(session.userId, 'user.update', id, {
+    username: updates.username,
     role: updates.role,
     disabled: updates.disabled,
     displayName: updates.displayName,

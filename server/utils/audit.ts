@@ -26,6 +26,7 @@ export type AuditAction =
   | 'config.downloads'
   | 'user.create'
   | 'user.update'
+  | 'user.delete'
   | 'source.login'
   | 'source.cookie'
   | 'source.clear'

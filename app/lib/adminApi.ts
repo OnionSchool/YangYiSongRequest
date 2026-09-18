@@ -385,9 +385,18 @@ export const batchCreateUsers = (
 
 export const patchUser = (
   id: string,
-  body: { disabled?: boolean; role?: AdminRole; password?: string; displayName?: string | null }
+  body: {
+    username?: string;
+    disabled?: boolean;
+    role?: AdminRole;
+    password?: string;
+    displayName?: string | null;
+  }
 ) =>
   apiFetch<{ ok: true }>(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+
+export const deleteUser = (id: string) =>
+  apiFetch<{ ok: true }>(`/api/admin/users/${id}`, { method: 'DELETE' });
 
 function filenameFromDisposition(value: string | null, fallback: string): string {
   const encoded = value?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];

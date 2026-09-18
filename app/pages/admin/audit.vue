@@ -27,6 +27,7 @@ const actionLabels: Record<string, string> = {
   'schedule.remove': '取消排期',
   'user.create': '创建账号',
   'user.update': '更新账号',
+  'user.delete': '删除账号',
   'config.site': '修改站点设置',
   'config.slots': '修改播出时段',
   'config.schedule-rules': '修改排期规则',

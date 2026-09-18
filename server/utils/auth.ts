@@ -221,19 +221,28 @@ export async function createAdminUser(
 
 export async function updateAdminUser(
   userId: string,
-  updates: { role?: AdminRole; disabled?: boolean; password?: string; displayName?: string | null }
+  updates: {
+    username?: string;
+    role?: AdminRole;
+    disabled?: boolean;
+    password?: string;
+    displayName?: string | null;
+  }
 ): Promise<void> {
   if (updates.role && !isAdminRole(updates.role))
     throw badRequest('INVALID_ROLE', '无效的管理员角色');
+  if (updates.username !== undefined) assertUsername(updates.username);
   if (updates.password) assertPassword(updates.password);
   const normalizedDisplayName = normalizeDisplayName(updates.displayName);
   const patch: {
+    username?: string;
     role?: AdminRole;
     disabled?: number;
     displayName?: string | null;
     passwordHash?: string;
     sessionVersion?: ReturnType<typeof sql>;
   } = {};
+  if (updates.username !== undefined) patch.username = updates.username;
   if (updates.role) patch.role = updates.role;
   if (typeof updates.disabled === 'boolean') patch.disabled = updates.disabled ? 1 : 0;
   if (updates.password) patch.passwordHash = hashPassword(updates.password);
@@ -245,6 +254,12 @@ export async function updateAdminUser(
       .prepare('SELECT "role", "disabled" FROM "AdminUser" WHERE "id" = ?')
       .get(userId) as { role: string; disabled: number } | undefined;
     if (!user) throw badRequest('USER_NOT_FOUND', '用户不存在');
+    if (updates.username !== undefined) {
+      const duplicate = sqlite
+        .prepare('SELECT "id" FROM "AdminUser" WHERE "username" = ? AND "id" != ?')
+        .get(updates.username, userId);
+      if (duplicate) throw badRequest('USERNAME_TAKEN', '账号已存在');
+    }
     const removesSuper =
       user.role === 'SUPER' && (updates.disabled || (updates.role && updates.role !== 'SUPER'));
     if (removesSuper) {
@@ -268,4 +283,40 @@ export async function updateAdminUser(
     }
   })();
   if (patch.sessionVersion) revokeUserSessions(userId);
+}
+
+export function deleteAdminUser(
+  userId: string,
+  actorId: string
+): { username: string; role: AdminRole; displayName: string | null } {
+  if (userId === actorId) throw badRequest('CANNOT_DELETE_SELF', '不能删除当前登录账号');
+  let deleted: { username: string; role: AdminRole; displayName: string | null } | undefined;
+  sqlite.transaction(() => {
+    const user = sqlite
+      .prepare(
+        'SELECT "username", "displayName", "role", "disabled" FROM "AdminUser" WHERE "id" = ?'
+      )
+      .get(userId) as
+      | { username: string; displayName: string | null; role: AdminRole; disabled: number }
+      | undefined;
+    if (!user) throw badRequest('USER_NOT_FOUND', '用户不存在');
+    if (user.role === 'SUPER' && user.disabled === 0) {
+      const activeSupers = sqlite
+        .prepare('SELECT COUNT(*) AS "count" FROM "AdminUser" WHERE "role" = ? AND "disabled" = 0')
+        .get('SUPER') as { count: number };
+      if (activeSupers.count <= 1)
+        throw badRequest('LAST_SUPER', '不能删除最后一个启用的超级管理员');
+    }
+    sqlite.prepare('DELETE FROM "AdminSession" WHERE "userId" = ?').run(userId);
+    sqlite.prepare('DELETE FROM "EmailVerification" WHERE "userId" = ?').run(userId);
+    sqlite.prepare('DELETE FROM "PasswordReset" WHERE "userId" = ?').run(userId);
+    sqlite.prepare('DELETE FROM "LoginAttempt" WHERE "username" = ?').run(user.username);
+    sqlite.prepare('DELETE FROM "AdminUser" WHERE "id" = ?').run(userId);
+    deleted = {
+      username: user.username,
+      role: user.role,
+      displayName: user.displayName,
+    };
+  })();
+  return deleted!;
 }
