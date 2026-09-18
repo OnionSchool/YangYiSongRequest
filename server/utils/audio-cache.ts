@@ -50,6 +50,7 @@ function getS3CacheConfig(): S3CacheConfig | null {
 }
 
 const s3Cache = getS3CacheConfig();
+const downloadInFlight = new Map<string, Promise<CachedAudio>>();
 
 function s3ObjectKey(requestId: string): string {
   return `audio-cache/${createHash('sha256').update(requestId).digest('hex')}.audio`;
@@ -247,7 +248,7 @@ async function saveCached(requestId: string, body: Buffer, mimeType: string): Pr
   return filePath;
 }
 
-export async function getRequestAudio(requestId: string): Promise<CachedAudio> {
+async function loadRequestAudio(requestId: string): Promise<CachedAudio> {
   const request = await db.select().from(songRequest).where(eq(songRequest.id, requestId)).limit(1);
   if (!request[0]) throw notFound('REQUEST_NOT_FOUND', '找不到点歌记录');
   const cached = await readCached(requestId, request[0].title);
@@ -263,6 +264,15 @@ export async function getRequestAudio(requestId: string): Promise<CachedAudio> {
     });
     throw error;
   }
+}
+
+export async function getRequestAudio(requestId: string): Promise<CachedAudio> {
+  const existing = downloadInFlight.get(requestId);
+  if (existing) return existing;
+
+  const request = loadRequestAudio(requestId).finally(() => downloadInFlight.delete(requestId));
+  downloadInFlight.set(requestId, request);
+  return request;
 }
 
 export async function getRequestDownloadLink(requestId: string): Promise<DownloadLink> {

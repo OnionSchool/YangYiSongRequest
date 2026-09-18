@@ -6,6 +6,7 @@ import { readCachedCover, saveCachedCover } from '../../utils/cover-cache';
 
 const TIMEOUT_MS = 8_000;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const CACHE_CONTROL = 'public, max-age=2592000, s-maxage=2592000, immutable';
 const SOURCE_BY_SERVER: Record<string, SourceId> = {
   netease: 'netease',
   tencent: 'qq',
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
 
   const cached = await readCachedCover(source, id, size);
   if (cached) {
-    setHeader(event, 'Cache-Control', 'public, max-age=86400, s-maxage=86400');
+    setHeader(event, 'Cache-Control', CACHE_CONTROL);
     setHeader(event, 'Content-Type', cached.contentType);
     return cached.body;
   }
@@ -67,7 +68,7 @@ export default defineEventHandler(async (event) => {
     const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
     const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
     await saveCachedCover(source, id, size, { body, contentType });
-    setHeader(event, 'Cache-Control', 'public, max-age=86400, s-maxage=86400');
+    setHeader(event, 'Cache-Control', CACHE_CONTROL);
     setHeader(event, 'Content-Type', contentType);
     return body;
   } catch (error) {
