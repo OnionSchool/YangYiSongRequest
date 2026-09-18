@@ -354,7 +354,16 @@ async function metingRedirect(
         const jsonUrl = await validExternalUrl(metingResultUrl(await response.json()));
         if (jsonUrl) return jsonUrl;
       }
-      logError('Meting 未收到3xx重定向', undefined, {
+      const isRedirect = response.status >= 300 && response.status < 400;
+      const message =
+        response.status >= 500
+          ? 'Meting API 服务异常'
+          : isRedirect
+            ? 'Meting 重定向缺少地址'
+            : response.ok
+              ? 'Meting 未提供重定向下载地址'
+              : 'Meting 返回非预期状态';
+      logError(message, undefined, {
         meting: {
           api: metingApiAddress(api.baseUrl),
           source,
@@ -362,10 +371,9 @@ async function metingRedirect(
           platformId: params.id,
           statusCode: response.status,
           hasLocationHeader: Boolean(location),
-          redirectStatus:
-            response.status >= 300 && response.status < 400 ? 'expected' : 'unexpected',
-          redirectRuleRequired: !(response.status >= 300 && response.status < 400),
-          responseUrl: response.url,
+          responseContentType: contentType.split(';', 1)[0] || undefined,
+          redirectStatus: isRedirect ? 'expected' : 'unexpected',
+          redirectRuleRequired: !isRedirect,
         },
       });
     } catch (error) {

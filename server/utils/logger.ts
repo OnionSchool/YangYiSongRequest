@@ -12,7 +12,7 @@ interface ErrorLogContext {
     statusCode?: number;
     hasLocationHeader?: boolean;
     redirectCode?: string;
-    responseUrl?: string;
+    responseContentType?: string;
     redirectStatus?: string;
     redirectRuleRequired?: boolean;
   };
