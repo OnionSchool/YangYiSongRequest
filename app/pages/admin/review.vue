@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
+import AdminPagination from '~/components/AdminPagination.vue';
 import { isoDate } from '~/lib/time';
 import {
   listRequests,
@@ -19,6 +20,7 @@ const page = ref(1);
 const statusFilter = ref('PENDING');
 const loading = ref(false);
 const error = ref<string | null>(null);
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 20)));
 
 // reject dialog
 const rejectTarget = ref<AdminRequest | null>(null);
@@ -33,13 +35,14 @@ const scheduling = ref(false);
 const scheduleLoading = ref(false);
 const unschedulingId = ref<string | null>(null);
 
-async function load() {
+async function load(nextPage = page.value) {
   loading.value = true;
   error.value = null;
   try {
-    const res = await listRequests({ status: statusFilter.value, page: page.value });
+    const res = await listRequests({ status: statusFilter.value, page: nextPage });
     items.value = res.items;
     total.value = res.total;
+    page.value = nextPage;
   } catch (e: any) {
     error.value = e.message ?? '加载失败';
   } finally {
@@ -313,28 +316,8 @@ onMounted(load);
     </div>
 
     <!-- Pagination -->
-    <div v-if="total > 20" class="mt-6 flex items-center justify-center gap-3">
-      <button
-        class="rounded-lg border border-rule px-3 py-1.5 text-sm hover:border-ink-faint disabled:opacity-30 transition-colors"
-        :disabled="page <= 1"
-        @click="
-          page--;
-          load();
-        "
-      >
-        ← 上一页
-      </button>
-      <span class="text-sm text-ink-faint font-mono">{{ page }} / {{ Math.ceil(total / 20) }}</span>
-      <button
-        class="rounded-lg border border-rule px-3 py-1.5 text-sm hover:border-ink-faint disabled:opacity-30 transition-colors"
-        :disabled="page >= Math.ceil(total / 20)"
-        @click="
-          page++;
-          load();
-        "
-      >
-        下一页 →
-      </button>
+    <div v-if="total > 20" class="mt-6">
+      <AdminPagination :loading="loading" :page="page" :total-pages="totalPages" @change="load" />
     </div>
 
     <!-- Reject Dialog -->

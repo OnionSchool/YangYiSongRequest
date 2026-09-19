@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import AdminPagination from '~/components/AdminPagination.vue';
 import { listAudit, type AuditEntry } from '~/lib/adminApi';
 
 definePageMeta({ layout: 'admin' });
@@ -213,23 +214,7 @@ onMounted(load);
       </div>
       <div class="flex items-center justify-between border-t border-rule px-4 py-3 text-sm">
         <span class="text-ink-faint">共 {{ total }} 条</span>
-        <div class="flex items-center gap-3">
-          <button
-            class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
-            :disabled="page <= 1 || loading"
-            @click="load(page - 1)"
-          >
-            上一页
-          </button>
-          <span class="text-xs text-ink-faint">{{ page }} / {{ totalPages }}</span>
-          <button
-            class="btn-secondary px-3 py-1.5 text-xs disabled:opacity-50"
-            :disabled="page >= totalPages || loading"
-            @click="load(page + 1)"
-          >
-            下一页
-          </button>
-        </div>
+        <AdminPagination :loading="loading" :page="page" :total-pages="totalPages" @change="load" />
       </div>
     </div>
 
