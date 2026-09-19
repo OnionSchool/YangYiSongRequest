@@ -13,10 +13,15 @@ export default defineEventHandler(async (event) => {
   const id = event.context.params?.id;
   if (!id) throw badRequest('BAD_ID', '缺少 ID');
 
-  const result = await db.delete(metingApi).where(eq(metingApi.id, id));
-  if (result.changes === 0) throw notFound('NOT_FOUND', '未找到该 API 配置');
+  const existing = await db
+    .select({ name: metingApi.name })
+    .from(metingApi)
+    .where(eq(metingApi.id, id))
+    .limit(1);
+  if (!existing[0]) throw notFound('NOT_FOUND', '未找到该 API 配置');
+  await db.delete(metingApi).where(eq(metingApi.id, id));
 
   invalidateMusicSearchCache();
-  await writeAudit(session.userId, 'meting.delete', id);
+  await writeAudit(session.userId, 'meting.delete', id, { name: existing[0].name });
   return { ok: true as const };
 });

@@ -43,9 +43,37 @@ const actionLabels: Record<string, string> = {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)));
 
-function formatDetail(detail: unknown) {
-  if (!detail) return '';
-  return typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2);
+const detailLabels: Record<string, string> = {
+  action: '处理方式',
+  authConfigured: '已配置鉴权',
+  count: '数量',
+  disabled: '禁用账号',
+  displayName: '显示名称',
+  from: '原状态',
+  name: '名称',
+  orderNo: '播放顺序',
+  passwordChanged: '已修改密码',
+  platformId: '平台歌曲 ID',
+  reason: '驳回理由',
+  role: '角色',
+  source: '音源',
+  to: '新状态',
+  username: '用户名',
+};
+
+function detailRows(detail: unknown): Array<{ label: string; value: string }> {
+  if (!detail || typeof detail !== 'object' || Array.isArray(detail)) return [];
+  return Object.entries(detail).map(([key, value]) => ({
+    label: detailLabels[key] ?? key,
+    value:
+      typeof value === 'boolean'
+        ? value
+          ? '是'
+          : '否'
+        : typeof value === 'object'
+          ? JSON.stringify(value)
+          : String(value),
+  }));
 }
 
 function openDetail(entry: AuditEntry) {
@@ -259,16 +287,33 @@ onMounted(load);
                 <dd class="font-mono text-xs">{{ selectedEntry.ip }}</dd>
                 <dt class="text-ink-faint">设备信息</dt>
                 <dd class="break-all text-xs text-ink-soft">{{ selectedEntry.userAgent }}</dd>
-                <dt v-if="selectedEntry.targetId" class="text-ink-faint">目标 ID</dt>
-                <dd v-if="selectedEntry.targetId" class="break-all font-mono text-xs">
+                <template v-for="item in selectedEntry.related" :key="item.label">
+                  <dt class="text-ink-faint">{{ item.label }}</dt>
+                  <dd>{{ item.value }}</dd>
+                </template>
+                <dt
+                  v-if="selectedEntry.targetId && selectedEntry.related.length === 0"
+                  class="text-ink-faint"
+                >
+                  记录 ID
+                </dt>
+                <dd
+                  v-if="selectedEntry.targetId && selectedEntry.related.length === 0"
+                  class="break-all font-mono text-xs"
+                >
                   {{ selectedEntry.targetId }}
                 </dd>
               </dl>
-              <div v-if="selectedEntry.detail">
+              <div v-if="detailRows(selectedEntry.detail).length">
                 <p class="mb-2 text-sm text-ink-faint">操作内容</p>
-                <pre
-                  class="max-h-72 overflow-auto rounded-lg bg-paper-deep/50 p-3 text-xs leading-5 text-ink-soft whitespace-pre-wrap break-all"
-                  >{{ formatDetail(selectedEntry.detail) }}</pre>
+                <dl
+                  class="grid gap-x-5 gap-y-3 rounded-lg bg-paper-deep/50 p-3 sm:grid-cols-[8rem_1fr]"
+                >
+                  <template v-for="item in detailRows(selectedEntry.detail)" :key="item.label">
+                    <dt class="text-xs text-ink-faint">{{ item.label }}</dt>
+                    <dd class="break-all text-xs text-ink-soft">{{ item.value }}</dd>
+                  </template>
+                </dl>
               </div>
               <p v-else class="text-sm text-ink-faint">本次操作没有额外内容。</p>
             </div>

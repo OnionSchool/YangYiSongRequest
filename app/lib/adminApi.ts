@@ -63,6 +63,7 @@ export interface AuditEntry {
   action: string;
   targetId: string | null;
   detail: unknown;
+  related: Array<{ label: string; value: string }>;
   ip: string;
   userAgent: string;
   createdAt: string;

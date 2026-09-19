@@ -218,7 +218,10 @@ export async function unscheduleRequest(
     return { version };
   })();
 
-  await writeAudit(actorId, 'schedule.remove', requestId);
+  await writeAudit(actorId, 'schedule.remove', requestId, {
+    playDate: scheduled[0].playDate,
+    slotId: scheduled[0].slotId,
+  });
   return { ok: true as const, ...result };
 }
 
