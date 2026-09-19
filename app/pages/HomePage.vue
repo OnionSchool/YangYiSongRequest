@@ -146,7 +146,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
     </RouterLink>
   </p>
 
-  <section class="mt-8">
+  <section v-if="site.data?.requestsOpen" class="mt-8">
     <h2 class="eyebrow">搜索</h2>
     <form class="mt-2.5 flex gap-2" @submit.prevent="search">
       <input
@@ -227,18 +227,20 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
     </div>
   </section>
 
-  <section class="halftone mt-8 rounded-card border border-rule p-5">
-    <h2 class="eyebrow">点歌规则</h2>
-    <ul class="mt-3 space-y-2 text-sm">
-      <li v-if="site.requireIdentity">
-        填年级、班级、姓名就行，不用注册。播出单上只显示歌，不显示是谁点的。
-      </li>
-      <li v-else>现在是匿名点歌，什么都不用填。播出单上只显示歌。</li>
-      <li>每人每天最多点 2 首。</li>
-      <li>提交后会拿到一个 6 位查询码，凭它查审核结果，记得存下来。</li>
-      <li>审核通过并排好时段的歌才会出现在播出单里。周末和法定假日不播。</li>
-    </ul>
-  </section>
+  <template v-if="site.data?.requestsOpen">
+    <section class="halftone mt-8 rounded-card border border-rule p-5">
+      <h2 class="eyebrow">点歌规则</h2>
+      <ul class="mt-3 space-y-2 text-sm">
+        <li v-if="site.requireIdentity">
+          填年级、班级、姓名就行，不用注册。播出单上只显示歌，不显示是谁点的。
+        </li>
+        <li v-else>现在是匿名点歌，什么都不用填。播出单上只显示歌。</li>
+        <li>每人每天最多点 2 首。</li>
+        <li>提交后会拿到一个 6 位查询码，凭它查审核结果，记得存下来。</li>
+        <li>审核通过并排好时段的歌才会出现在播出单里。周末和法定假日不播。</li>
+      </ul>
+    </section>
 
-  <RequestSlip :song="picked" @close="picked = null" />
+    <RequestSlip :song="picked" @close="picked = null" />
+  </template>
 </template>
