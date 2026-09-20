@@ -3,7 +3,7 @@ import { fetchAudioUrl, isSourceId } from '../../../utils/music-sources';
 import { fetchExternal } from '../../../utils/external-url';
 import { getClientIp } from '../../../utils/request-ip';
 import { consumePublicRateLimit } from '../../../utils/public-rate-limit';
-import { STREAM_RATE_LIMIT } from '../../../utils/rate-limits';
+import { isInternalRateLimitEnabled, STREAM_RATE_LIMIT } from '../../../utils/rate-limits';
 import { readSite } from '../../../utils/site';
 
 const CONNECTION_TIMEOUT_MS = 60_000;
@@ -11,6 +11,7 @@ const MAX_CONCURRENT_STREAMS_PER_IP = 3;
 const activeStreams = new Map<string, number>();
 
 function acquireStream(ip: string): () => void {
+  if (!isInternalRateLimitEnabled()) return () => undefined;
   const active = activeStreams.get(ip) ?? 0;
   if (active >= MAX_CONCURRENT_STREAMS_PER_IP) {
     throw createError({

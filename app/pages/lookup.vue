@@ -69,6 +69,7 @@ async function look() {
           :src="result.coverUrl"
           alt=""
           referrerpolicy="no-referrer"
+          decoding="async"
           class="size-14 shrink-0 rounded-badge border border-rule object-cover"
         />
         <div class="min-w-0">

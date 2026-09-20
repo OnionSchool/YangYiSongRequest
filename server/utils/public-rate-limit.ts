@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { sqlite } from './db';
 import { tooMany } from './errors';
+import { isInternalRateLimitEnabled } from './rate-limits';
 
 function hashIp(ip: string): string {
   return createHash('sha256').update(`public-rate-limit-ip:${ip}`).digest('hex');
@@ -12,6 +13,7 @@ export function consumePublicRateLimit(
   max: number,
   windowSeconds: number
 ): void {
+  if (!isInternalRateLimitEnabled()) return;
   const current = Math.floor(Date.now() / 1000);
   const windowStart = current - (current % windowSeconds);
   const key = `${namespace}:${hashIp(ip)}`;

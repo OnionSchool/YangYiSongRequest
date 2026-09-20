@@ -54,29 +54,9 @@ TRUSTED_PROXY_IPS=127.0.0.1,::1
 
 在 Docker 网络中，请填入 Caddy 容器在同一网络内的实际 IP；多个可信代理用英文逗号分隔。未配置时，日志中的地址通常是 Caddy 或 Docker 网桥地址，而不是真实访客 IP。
 
-## Cloudflare CDN
+## AxisNow 边缘
 
-Cloudflare 代理请求会向源站加入 `CF-Connecting-IP`。应用仅在 TCP 连接来自 `TRUSTED_PROXY_IPS` 时读取该头，因此请继续将实际连接应用的 Caddy、Nginx 或 Docker 网桥地址配置为可信代理：
-
-```dotenv
-TRUSTED_PROXY_IPS=127.0.0.1,::1
-```
-
-若 Cloudflare 直接连接应用而中间没有本地代理，必须在防火墙或 Cloudflare Tunnel 中限制源站只接受 Cloudflare 流量，再将实际连接来源加入 `TRUSTED_PROXY_IPS`；不要无条件信任 `CF-Connecting-IP` 或 `X-Forwarded-For`，否则访客可以伪造 IP。
-
-## 其他 CDN 的封面缓存
-
-歌曲封面由 `/api/cover/meting` 提供，响应已经带有 30 天的不可变缓存头。若使用 AxisNow 或其他 CDN，请在对应控制台添加一条仅匹配封面接口的缓存规则：
-
-```text
-当传入请求匹配：URI Path starts with /api/cover/
-缓存资格：符合缓存条件
-边缘 TTL：遵从源站缓存控制头
-浏览器 TTL：遵从源站缓存控制头
-缓存键：保留完整查询参数
-```
-
-不要将整段 `/api/` 设置为可缓存，其中包含登录、管理和点歌等动态接口；也不要忽略查询参数，`server`、`id` 和 `size` 用于区分封面。规则生效后，封面首次请求仍需由源站向音乐平台获取；同一封面后续请求会直接命中 CDN 边缘缓存。
+生产环境推荐以 AxisNow 作为唯一公网入口。完整的源站锁定、真实 IP、缓存、限流、回源、告警和可选 Cloudflare 双 CDN 配置见[AxisNow 边缘部署](./axisnow)。
 
 ## R2 对象存储预算守卫
 

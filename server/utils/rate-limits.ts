@@ -39,3 +39,7 @@ export const LOGIN_RATE_LIMIT = {
 
 export const IP_DAILY_LIMIT = 10;
 export const IDENTITY_DAILY_LIMIT = 2;
+
+export function isInternalRateLimitEnabled(): boolean {
+  return process.env.INTERNAL_RATE_LIMIT_ENABLED !== 'false';
+}

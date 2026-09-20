@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { sqlite } from './db';
 import { badRequest, tooMany } from './errors';
+import { isInternalRateLimitEnabled } from './rate-limits';
 
 const CHALLENGE_TTL_SECONDS = 5 * 60;
 const REQUESTS_PER_HOUR = 5;
@@ -71,6 +72,7 @@ export function createPowChallenge(
   const hourStart = now - (now % 3600);
   const requestKey = `ip:${ipHash(ip)}`;
   const challengeKey = `challenge:${ipHash(ip)}`;
+  const rateLimitEnabled = isInternalRateLimitEnabled();
   const result = sqlite.transaction(() => {
     const record = sqlite
       .prepare(
@@ -78,25 +80,27 @@ export function createPowChallenge(
       )
       .get(requestKey) as
       { windowStart: number; count: number; blockedUntil: number | null } | undefined;
-    if (record?.blockedUntil && record.blockedUntil > now) {
+    if (rateLimitEnabled && record?.blockedUntil && record.blockedUntil > now) {
       throw tooMany('POW_COOLDOWN', '验证失败次数过多，请稍后再试');
     }
-    const count = record?.windowStart === hourStart ? record.count : 0;
-    if (count >= REQUESTS_PER_HOUR) {
+    const count = rateLimitEnabled && record?.windowStart === hourStart ? record.count : 0;
+    if (rateLimitEnabled && count >= REQUESTS_PER_HOUR) {
       throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试', {
         limit: REQUESTS_PER_HOUR,
         window: 'hour',
       });
     }
-    const challengeRate = sqlite
-      .prepare('SELECT "windowStart", "count" FROM "RequestRateLimit" WHERE "key" = ?')
-      .get(challengeKey) as { windowStart: number; count: number } | undefined;
-    const issued = challengeRate?.windowStart === hourStart ? challengeRate.count : 0;
-    if (issued >= CHALLENGES_PER_HOUR) {
-      throw tooMany('CHALLENGE_RATE_LIMIT', '验证请求过于频繁，请稍后再试', {
-        limit: CHALLENGES_PER_HOUR,
-        window: 'hour',
-      });
+    if (rateLimitEnabled) {
+      const challengeRate = sqlite
+        .prepare('SELECT "windowStart", "count" FROM "RequestRateLimit" WHERE "key" = ?')
+        .get(challengeKey) as { windowStart: number; count: number } | undefined;
+      const issued = challengeRate?.windowStart === hourStart ? challengeRate.count : 0;
+      if (issued >= CHALLENGES_PER_HOUR) {
+        throw tooMany('CHALLENGE_RATE_LIMIT', '验证请求过于频繁，请稍后再试', {
+          limit: CHALLENGES_PER_HOUR,
+          window: 'hour',
+        });
+      }
     }
 
     const challengeId = `pow_${randomUUID().replace(/-/g, '')}`;
@@ -106,11 +110,13 @@ export function createPowChallenge(
         'INSERT INTO "PowChallenge" ("id", "contextHash", "ipHash", "difficulty", "expiresAt") VALUES (?, ?, ?, ?, ?)'
       )
       .run(challengeId, contextHash, ipHash(ip), difficultyFor(count), expiresAt);
-    sqlite
-      .prepare(
-        'INSERT INTO "RequestRateLimit" ("key", "windowStart", "count", "blockedUntil") VALUES (?, ?, 1, NULL) ON CONFLICT("key") DO UPDATE SET "windowStart" = excluded."windowStart", "count" = CASE WHEN "RequestRateLimit"."windowStart" = excluded."windowStart" THEN "RequestRateLimit"."count" + 1 ELSE 1 END, "blockedUntil" = NULL'
-      )
-      .run(challengeKey, hourStart);
+    if (rateLimitEnabled) {
+      sqlite
+        .prepare(
+          'INSERT INTO "RequestRateLimit" ("key", "windowStart", "count", "blockedUntil") VALUES (?, ?, 1, NULL) ON CONFLICT("key") DO UPDATE SET "windowStart" = excluded."windowStart", "count" = CASE WHEN "RequestRateLimit"."windowStart" = excluded."windowStart" THEN "RequestRateLimit"."count" + 1 ELSE 1 END, "blockedUntil" = NULL'
+        )
+        .run(challengeKey, hourStart);
+    }
     return { challengeId, difficulty: difficultyFor(count), expiresAt };
   });
   return result();
@@ -139,6 +145,7 @@ export function verifyAndConsumePow(
   }
 
   const key = `ip:${ipHash(ip)}`;
+  const rateLimitEnabled = isInternalRateLimitEnabled();
   const transaction = sqlite.transaction(() => {
     const challenge = sqlite
       .prepare(
@@ -172,7 +179,7 @@ export function verifyAndConsumePow(
       sqlite
         .prepare('UPDATE "PowChallenge" SET "failedAttempts" = ? WHERE "id" = ?')
         .run(failedAttempts, challengeId);
-      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
+      if (rateLimitEnabled && failedAttempts >= MAX_FAILED_ATTEMPTS) {
         sqlite
           .prepare(
             'INSERT INTO "RequestRateLimit" ("key", "windowStart", "count", "blockedUntil") VALUES (?, ?, 0, ?) ON CONFLICT("key") DO UPDATE SET "blockedUntil" = excluded."blockedUntil"'
@@ -190,24 +197,27 @@ export function verifyAndConsumePow(
     } catch {
       throw badRequest('POW_REPLAYED', '验证已使用，请重新提交');
     }
-    const rate = sqlite
-      .prepare(
-        'SELECT "windowStart", "count", "blockedUntil" FROM "RequestRateLimit" WHERE "key" = ?'
-      )
-      .get(key) as { windowStart: number; count: number; blockedUntil: number | null } | undefined;
-    if (rate?.blockedUntil && rate.blockedUntil > now) {
-      throw tooMany('POW_COOLDOWN', '验证失败次数过多，请稍后再试');
+    if (rateLimitEnabled) {
+      const rate = sqlite
+        .prepare(
+          'SELECT "windowStart", "count", "blockedUntil" FROM "RequestRateLimit" WHERE "key" = ?'
+        )
+        .get(key) as
+        { windowStart: number; count: number; blockedUntil: number | null } | undefined;
+      if (rate?.blockedUntil && rate.blockedUntil > now) {
+        throw tooMany('POW_COOLDOWN', '验证失败次数过多，请稍后再试');
+      }
+      const hourStart = now - (now % 3600);
+      const used = rate?.windowStart === hourStart ? rate.count : 0;
+      if (used >= REQUESTS_PER_HOUR) {
+        throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试');
+      }
+      sqlite
+        .prepare(
+          'INSERT INTO "RequestRateLimit" ("key", "windowStart", "count", "blockedUntil") VALUES (?, ?, 1, NULL) ON CONFLICT("key") DO UPDATE SET "windowStart" = excluded."windowStart", "count" = CASE WHEN "RequestRateLimit"."windowStart" = excluded."windowStart" THEN "RequestRateLimit"."count" + 1 ELSE 1 END, "blockedUntil" = NULL'
+        )
+        .run(key, hourStart);
     }
-    const hourStart = now - (now % 3600);
-    const used = rate?.windowStart === hourStart ? rate.count : 0;
-    if (used >= REQUESTS_PER_HOUR) {
-      throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试');
-    }
-    sqlite
-      .prepare(
-        'INSERT INTO "RequestRateLimit" ("key", "windowStart", "count", "blockedUntil") VALUES (?, ?, 1, NULL) ON CONFLICT("key") DO UPDATE SET "windowStart" = excluded."windowStart", "count" = CASE WHEN "RequestRateLimit"."windowStart" = excluded."windowStart" THEN "RequestRateLimit"."count" + 1 ELSE 1 END, "blockedUntil" = NULL'
-      )
-      .run(key, hourStart);
     sqlite.prepare('UPDATE "PowChallenge" SET "usedAt" = ? WHERE "id" = ?').run(now, challengeId);
   });
   transaction();

@@ -5,7 +5,7 @@ import { songRequest, schedule, broadcastSlot } from './schema';
 import { GRADE_LABELS, encodeWordList, isGrade, isRequestStatus } from './domain';
 import type { Grade, RequestStatus, SourceId } from './domain';
 import { badRequest, notFound, tooMany } from './errors';
-import { IP_DAILY_LIMIT, IDENTITY_DAILY_LIMIT } from './rate-limits';
+import { IDENTITY_DAILY_LIMIT, IP_DAILY_LIMIT, isInternalRateLimitEnabled } from './rate-limits';
 import { shanghaiDayStart } from './time';
 import { isValid6DigitCode } from './runtime';
 import { getSource } from './music-sources';
@@ -57,6 +57,7 @@ export function normalizeIdentity(
 }
 
 export function assertDailyLimits(ipUsed: number, identityUsed: number | null): void {
+  if (!isInternalRateLimitEnabled()) return;
   if (ipUsed >= IP_DAILY_LIMIT) {
     throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试', {
       limit: IP_DAILY_LIMIT,

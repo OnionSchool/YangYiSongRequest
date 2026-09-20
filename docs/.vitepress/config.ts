@@ -31,6 +31,7 @@ export default defineConfig({
           text: '部署运维',
           items: [
             { text: '部署与反向代理', link: '/operations/deployment' },
+            { text: 'AxisNow 边缘部署', link: '/operations/axisnow' },
             { text: '音源、缓存与备份', link: '/operations/media-and-backup' },
           ],
         },

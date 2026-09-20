@@ -75,7 +75,7 @@ const sourceLabel = (id: SourceId) => SOURCES.find((item) => item.id === id)?.la
               :src="song.coverUrl"
               alt=""
               referrerpolicy="no-referrer"
-              loading="lazy"
+              decoding="async"
               class="size-9 shrink-0 rounded-badge border border-rule object-cover"
             />
             <div v-else class="halftone size-9 shrink-0 rounded-badge border border-rule" />

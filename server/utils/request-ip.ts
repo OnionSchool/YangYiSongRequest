@@ -13,7 +13,9 @@ function trustedProxyAddresses(): Set<string> {
 export function getClientIp(event: H3Event): string {
   const socketIp = event.node.req.socket.remoteAddress ?? 'unknown';
   if (!trustedProxyAddresses().has(socketIp)) return socketIp;
+  const forwardedIp = getRequestHeader(event, 'x-forwarded-for')?.split(',')[0]?.trim();
+  if (forwardedIp) return forwardedIp;
   const cloudflareIp = getRequestHeader(event, 'cf-connecting-ip')?.trim();
   if (cloudflareIp) return cloudflareIp;
-  return getRequestHeader(event, 'x-forwarded-for')?.split(',')[0]?.trim() || socketIp;
+  return getRequestHeader(event, 'x-real-ip')?.trim() || socketIp;
 }

@@ -20,7 +20,7 @@ const sounding = computed(() => current.value && player.playing);
       :src="song.coverUrl"
       alt=""
       referrerpolicy="no-referrer"
-      loading="lazy"
+      decoding="async"
       class="size-11 shrink-0 rounded-badge border border-rule object-cover"
     />
     <div v-else class="halftone size-11 shrink-0 rounded-badge border border-rule" />
