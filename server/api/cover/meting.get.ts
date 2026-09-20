@@ -67,7 +67,8 @@ export default defineEventHandler(async (event) => {
     }
     const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
     const contentType = imageRes.headers.get('content-type') ?? 'image/jpeg';
-    await saveCachedCover(source, id, size, { body, contentType });
+    // 缓存写入不应延迟首次向访客返回封面。
+    void saveCachedCover(source, id, size, { body, contentType });
     setHeader(event, 'Cache-Control', CACHE_CONTROL);
     setHeader(event, 'Content-Type', contentType);
     return body;
