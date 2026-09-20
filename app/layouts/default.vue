@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
+import AboutDialog from '~/components/AboutDialog.vue';
 import ThemeToggle from '~/components/ThemeToggle.vue';
 import { useServerClock } from '~/stores/clock';
 import { useSite } from '~/stores/site';
 
 const clock = useServerClock();
 const site = useSite();
+const showAbout = ref(false);
+
 onMounted(() => {
   clock.start();
   void site.load();
+  if (!localStorage.getItem('yangzhong-voice-about-seen')) {
+    showAbout.value = true;
+    localStorage.setItem('yangzhong-voice-about-seen', '1');
+  }
 });
 </script>
 
@@ -50,8 +57,18 @@ onMounted(() => {
         <p class="text-xs text-ink-soft">
           杨村一中校园广播电视台 · 音频来自第三方音乐平台，仅用于校内广播
         </p>
-        <p v-if="clock.version" class="eyebrow">v{{ clock.version }}</p>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            class="text-xs text-ink-soft underline decoration-rule underline-offset-4 hover:text-ink"
+            @click="showAbout = true"
+          >
+            关于
+          </button>
+          <p v-if="clock.version" class="eyebrow">v{{ clock.version }}</p>
+        </div>
       </div>
     </footer>
+    <AboutDialog v-model:open="showAbout" />
   </div>
 </template>
