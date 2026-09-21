@@ -1,4 +1,5 @@
-import { createError, defineEventHandler, getRouterParam, setHeader } from 'h3';
+import { createError, defineEventHandler, getQuery, getRouterParam, setHeader } from 'h3';
+import { requirePermission } from '../../../utils/admin-auth';
 import { fetchAudioUrl, isSourceId } from '../../../utils/music-sources';
 import { fetchExternal } from '../../../utils/external-url';
 import { getClientIp } from '../../../utils/request-ip';
@@ -32,7 +33,9 @@ function acquireStream(ip: string): () => void {
 }
 
 export default defineEventHandler(async (event) => {
-  if (!(await readSite()).guestPreviewOpen) {
+  const adminPreview = getQuery(event).adminPreview === '1';
+  if (adminPreview) requirePermission(event, 'requests.review');
+  if (!(await readSite()).guestPreviewOpen && !adminPreview) {
     throw createError({
       statusCode: 403,
       statusMessage: 'Forbidden',

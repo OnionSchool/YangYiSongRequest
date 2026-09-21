@@ -40,18 +40,19 @@ export const usePlayer = defineStore('player', () => {
     return el;
   }
 
-  const keyOf = (source: SourceId, platformId: string) => `${source}:${platformId}`;
+  const keyOf = (source: SourceId, platformId: string, adminPreview = false) =>
+    `${source}:${platformId}:${adminPreview ? 'admin' : 'public'}`;
 
-  function isCurrent(source: SourceId, platformId: string): boolean {
-    return currentKey.value === keyOf(source, platformId);
+  function isCurrent(source: SourceId, platformId: string, adminPreview = false): boolean {
+    return currentKey.value === keyOf(source, platformId, adminPreview);
   }
 
-  async function toggle(source: SourceId, platformId: string): Promise<void> {
+  async function toggle(source: SourceId, platformId: string, adminPreview = false): Promise<void> {
     const el = element();
-    if (isCurrent(source, platformId)) {
+    if (isCurrent(source, platformId, adminPreview)) {
       if (el.paused) {
         await el.play().catch(() => {
-          if (isCurrent(source, platformId)) {
+          if (isCurrent(source, platformId, adminPreview)) {
             loading.value = false;
             error.value = '这首暂时无法播放';
           }
@@ -61,10 +62,10 @@ export const usePlayer = defineStore('player', () => {
     }
     error.value = null;
     loading.value = true;
-    currentKey.value = keyOf(source, platformId);
-    el.src = streamUrl(source, platformId);
+    currentKey.value = keyOf(source, platformId, adminPreview);
+    el.src = `${streamUrl(source, platformId)}${adminPreview ? '?adminPreview=1' : ''}`;
     await el.play().catch(() => {
-      if (isCurrent(source, platformId)) {
+      if (isCurrent(source, platformId, adminPreview)) {
         loading.value = false;
         playing.value = false;
         error.value = '这首暂时无法播放';

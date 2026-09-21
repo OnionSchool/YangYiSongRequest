@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import AdminPagination from '~/components/AdminPagination.vue';
 import { isoDate } from '~/lib/time';
+import { usePlayer } from '~/stores/player';
 import {
   listRequests,
   readDay,
@@ -21,6 +22,7 @@ const statusFilter = ref('PENDING');
 const loading = ref(false);
 const error = ref<string | null>(null);
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 20)));
+const player = usePlayer();
 
 // reject dialog
 const rejectTarget = ref<AdminRequest | null>(null);
@@ -125,6 +127,14 @@ function formatDuration(ms: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function previewing(item: AdminRequest) {
+  return player.isCurrent(item.source, item.platformId, true);
+}
+
+function togglePreview(item: AdminRequest) {
+  void player.toggle(item.source, item.platformId, true);
+}
+
 onMounted(load);
 </script>
 
@@ -206,6 +216,24 @@ onMounted(load);
             <p class="text-sm text-ink-soft truncate mt-0.5">{{ item.artist }}</p>
             <div class="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-ink-faint">
               <span class="font-mono">{{ formatDuration(item.durationMs) }}</span>
+              <button
+                type="button"
+                class="rounded-md border border-rule px-2 py-0.5 text-xs font-medium text-ink-soft transition-colors hover:border-ink-faint hover:text-ink disabled:opacity-50"
+                :class="
+                  previewing(item) && player.playing ? 'border-orange bg-orange/15 text-ink' : ''
+                "
+                :disabled="player.loading && previewing(item)"
+                :aria-label="`试听 ${item.title}`"
+                @click="togglePreview(item)"
+              >
+                {{
+                  previewing(item) && player.loading
+                    ? '载入中'
+                    : previewing(item) && player.playing
+                      ? '暂停试听'
+                      : '试听'
+                }}
+              </button>
               <span v-if="item.requester" class="flex items-center gap-1">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -277,6 +305,9 @@ onMounted(load);
             </button>
           </div>
         </div>
+        <p v-if="previewing(item) && player.error" class="mt-2 ml-15 text-xs text-red-500">
+          {{ player.error }}
+        </p>
         <p v-if="item.rejectReason" class="mt-2 ml-15 text-xs text-red-500">
           驳回理由：{{ item.rejectReason }}
         </p>
