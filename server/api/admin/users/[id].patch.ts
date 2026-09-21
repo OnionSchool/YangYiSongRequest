@@ -24,6 +24,7 @@ export default defineEventHandler(async (event) => {
     disabled?: boolean;
     password?: string;
     displayName?: string | null;
+    permissionOverrides?: unknown;
   }>(event);
   const updates = {
     username: body.username,
@@ -31,6 +32,7 @@ export default defineEventHandler(async (event) => {
     disabled: body.disabled,
     password: body.password,
     displayName: body.displayName,
+    permissionOverrides: body.permissionOverrides,
   };
   try {
     await updateAdminUser(id, updates);
@@ -51,6 +53,7 @@ export default defineEventHandler(async (event) => {
     disabled: updates.disabled,
     displayName: updates.displayName,
     passwordChanged: Boolean(updates.password),
+    permissionOverrides: updates.permissionOverrides,
   });
 
   return { ok: true };

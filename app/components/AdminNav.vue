@@ -29,28 +29,46 @@ const navGroups = computed(() => [
     label: '工作台',
     items: [
       { to: '/admin', icon: '📊', label: '仪表盘', exact: true },
-      ...(admin.me?.role === 'TECHNICIAN'
-        ? []
-        : [{ to: '/admin/review', icon: '📋', label: '审核管理' }]),
-      {
-        to: '/admin/schedule',
-        icon: '📅',
-        label: admin.me?.role === 'TECHNICIAN' ? '播放工作台' : '排期管理',
-      },
+      ...(admin.can('requests.review')
+        ? [{ to: '/admin/review', icon: '📋', label: '审核管理' }]
+        : []),
+      ...(admin.can('schedule.read')
+        ? [
+            {
+              to: '/admin/schedule',
+              icon: '📅',
+              label: admin.can('schedule.manage') ? '排期管理' : '播放工作台',
+            },
+          ]
+        : []),
     ],
   },
-  ...(admin.isSuper
+  ...(admin.isSuper || admin.me?.permissions.length
     ? [
         {
           label: '系统配置',
           items: [
-            { to: '/admin/config', icon: '⚙️', label: '站点设置' },
-            { to: '/admin/calendar', icon: '🗓️', label: '行政历' },
-            { to: '/admin/sources', icon: '🎵', label: '音源状态' },
-            { to: '/admin/alerts', icon: '⚠️', label: '系统告警' },
-            { to: '/admin/audit', icon: '📜', label: '操作日志' },
-            { to: '/admin/request-records', icon: '🧾', label: '点歌记录' },
-            { to: '/admin/users', icon: '👥', label: '账号管理' },
+            ...(admin.can('site.manage')
+              ? [{ to: '/admin/config', icon: '⚙️', label: '站点设置' }]
+              : []),
+            ...(admin.can('calendar.manage')
+              ? [{ to: '/admin/calendar', icon: '🗓️', label: '行政历' }]
+              : []),
+            ...(admin.can('sources.manage')
+              ? [{ to: '/admin/sources', icon: '🎵', label: '音源状态' }]
+              : []),
+            ...(admin.can('alerts.manage')
+              ? [{ to: '/admin/alerts', icon: '⚠️', label: '系统告警' }]
+              : []),
+            ...(admin.can('audit.read')
+              ? [{ to: '/admin/audit', icon: '📜', label: '操作日志' }]
+              : []),
+            ...(admin.can('records.read')
+              ? [{ to: '/admin/request-records', icon: '🧾', label: '点歌记录' }]
+              : []),
+            ...(admin.can('users.manage')
+              ? [{ to: '/admin/users', icon: '👥', label: '账号管理' }]
+              : []),
           ],
         },
       ]
@@ -68,8 +86,8 @@ const navGroups = computed(() => [
 // 移动端底栏 + "更多"
 const mobileMainTabs = computed(() => [
   { to: '/admin', icon: '📊', label: '首页', exact: true },
-  ...(admin.me?.role === 'TECHNICIAN' ? [] : [{ to: '/admin/review', icon: '📋', label: '审核' }]),
-  { to: '/admin/schedule', icon: '📅', label: '排期' },
+  ...(admin.can('requests.review') ? [{ to: '/admin/review', icon: '📋', label: '审核' }] : []),
+  ...(admin.can('schedule.read') ? [{ to: '/admin/schedule', icon: '📅', label: '排期' }] : []),
 ]);
 
 function isActive(to: string, exact?: boolean) {

@@ -1,11 +1,13 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { apiFetch, setCsrfToken } from '~/lib/api';
+import type { AdminPermission } from '~/lib/adminApi';
 
 export interface AdminUser {
   username: string;
   displayName: string;
   role: 'SUPER' | 'PLANNER' | 'TECHNICIAN';
+  permissions: AdminPermission[];
   mustChangePassword: boolean;
   mustBindEmail: boolean;
   email: string | null;
@@ -18,6 +20,8 @@ export const useAdmin = defineStore('admin', () => {
   const me = ref<AdminUser | null>(null);
 
   const isSuper = computed(() => me.value?.role === 'SUPER');
+  const can = (permission: AdminPermission) =>
+    isSuper.value || me.value?.permissions.includes(permission);
 
   async function login(username: string, password: string) {
     const user = await apiFetch<AdminUser>('/api/admin/login', {
@@ -65,6 +69,7 @@ export const useAdmin = defineStore('admin', () => {
   return {
     me,
     isSuper,
+    can,
     login,
     logout,
     checkSession,

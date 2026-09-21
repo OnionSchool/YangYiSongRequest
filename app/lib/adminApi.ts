@@ -3,11 +3,26 @@ import { ApiError, apiFetch } from './api';
 import type { RequestStatus, SourceId } from './api';
 
 export type AdminRole = 'SUPER' | 'PLANNER' | 'TECHNICIAN';
+export type AdminPermission =
+  | 'requests.review'
+  | 'schedule.read'
+  | 'schedule.manage'
+  | 'playback.manage'
+  | 'downloads.read'
+  | 'sources.manage'
+  | 'site.manage'
+  | 'calendar.manage'
+  | 'records.read'
+  | 'audit.read'
+  | 'alerts.manage'
+  | 'storage.read'
+  | 'users.manage';
 
 export interface AdminMe {
   username: string;
   displayName: string;
   role: AdminRole;
+  permissions: AdminPermission[];
   mustChangePassword: boolean;
   mustBindEmail: boolean;
   email: string | null;
@@ -272,6 +287,8 @@ export interface AdminUserRow {
   username: string;
   displayName: string;
   role: AdminRole;
+  permissions: AdminPermission[];
+  permissionOverrides: { grant?: AdminPermission[]; revoke?: AdminPermission[] };
   disabled: boolean;
   mustChangePassword: boolean;
   lastLoginAt: string | null;
@@ -405,6 +422,7 @@ export const patchUser = (
     role?: AdminRole;
     password?: string;
     displayName?: string | null;
+    permissionOverrides?: { grant?: AdminPermission[]; revoke?: AdminPermission[] };
   }
 ) =>
   apiFetch<{ ok: true }>(`/api/admin/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) });

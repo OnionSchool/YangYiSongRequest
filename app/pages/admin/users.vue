@@ -7,6 +7,7 @@ import {
   patchUser,
   deleteUser,
   type AdminRole,
+  type AdminPermission,
   type AdminUserRow,
 } from '~/lib/adminApi';
 import { ApiError } from '~/lib/api';
@@ -127,6 +128,80 @@ const editingUsername = ref('');
 const savingUsername = ref(false);
 const updatingRoleId = ref<string | null>(null);
 const deletingUserId = ref<string | null>(null);
+const editingPermissionsId = ref<string | null>(null);
+const savingPermissions = ref(false);
+
+const permissionGroups: Array<{
+  label: string;
+  items: Array<{ key: AdminPermission; label: string }>;
+}> = [
+  {
+    label: '点歌与播出',
+    items: [
+      { key: 'requests.review', label: '审核与手动点歌' },
+      { key: 'schedule.read', label: '查看排期' },
+      { key: 'schedule.manage', label: '排期管理' },
+      { key: 'playback.manage', label: '播放状态管理' },
+      { key: 'downloads.read', label: '下载播出文件' },
+    ],
+  },
+  {
+    label: '站点与运维',
+    items: [
+      { key: 'sources.manage', label: '音源与 Meting 配置' },
+      { key: 'site.manage', label: '站点与点歌设置' },
+      { key: 'calendar.manage', label: '行政历与播出时段' },
+      { key: 'records.read', label: '查看点歌记录' },
+      { key: 'audit.read', label: '查看操作日志' },
+      { key: 'alerts.manage', label: '系统告警' },
+      { key: 'storage.read', label: '对象存储' },
+    ],
+  },
+  { label: '账号', items: [{ key: 'users.manage', label: '账号与权限管理' }] },
+];
+
+const roleDefaults: Record<AdminRole, AdminPermission[]> = {
+  SUPER: permissionGroups.flatMap((group) => group.items.map((item) => item.key)),
+  PLANNER: ['requests.review', 'schedule.read', 'schedule.manage', 'sources.manage'],
+  TECHNICIAN: ['schedule.read', 'playback.manage', 'downloads.read'],
+};
+
+function hasPermission(user: AdminUserRow, permission: AdminPermission) {
+  return user.permissions.includes(permission);
+}
+
+async function togglePermission(user: AdminUserRow, permission: AdminPermission) {
+  if (user.role === 'SUPER' || savingPermissions.value) return;
+  const enabled = hasPermission(user, permission);
+  const defaults = roleDefaults[user.role];
+  const grant = new Set(user.permissionOverrides.grant ?? []);
+  const revoke = new Set(user.permissionOverrides.revoke ?? []);
+  if (enabled) {
+    grant.delete(permission);
+    if (defaults.includes(permission)) revoke.add(permission);
+  } else {
+    revoke.delete(permission);
+    if (!defaults.includes(permission)) grant.add(permission);
+  }
+  savingPermissions.value = true;
+  error.value = null;
+  try {
+    const permissionOverrides = { grant: [...grant], revoke: [...revoke] };
+    await patchUser(user.id, { permissionOverrides });
+    user.permissionOverrides = permissionOverrides;
+    user.permissions = permissionGroups
+      .flatMap((group) => group.items.map((item) => item.key))
+      .filter((item) => {
+        if (grant.has(item)) return true;
+        if (revoke.has(item)) return false;
+        return defaults.includes(item);
+      });
+  } catch (e: any) {
+    error.value = e instanceof ApiError ? e.message : '权限保存失败';
+  } finally {
+    savingPermissions.value = false;
+  }
+}
 
 function startDisplayNameEdit(user: AdminUserRow) {
   editingDisplayNameId.value = user.id;
@@ -204,6 +279,7 @@ async function changeRole(user: AdminUserRow, event: Event) {
   try {
     await patchUser(user.id, { role });
     user.role = role;
+    user.permissions = roleDefaults[role];
     msg.value = '用户权限已更新';
     setTimeout(() => {
       msg.value = null;
@@ -516,6 +592,13 @@ wangwu Pass12345678 王五"
               <option value="TECHNICIAN">技术员权限</option>
               <option value="SUPER">超级管理员</option>
             </select>
+            <button
+              type="button"
+              class="text-xs text-ink-faint hover:text-ink"
+              @click="editingPermissionsId = editingPermissionsId === user.id ? null : user.id"
+            >
+              细分权限
+            </button>
             <span
               v-if="user.disabled"
               class="text-[10px] px-1.5 py-0.5 rounded-md bg-red-50 text-red-600 border border-red-200 font-medium"
@@ -563,6 +646,37 @@ wangwu Pass12345678 王五"
             </template>
             上次登录：{{ formatDate(user.lastLoginAt) }}
           </p>
+          <div
+            v-if="editingPermissionsId === user.id"
+            class="mt-3 rounded-lg border border-rule bg-paper-deep/15 p-3"
+          >
+            <p v-if="user.role === 'SUPER'" class="text-xs text-ink-faint">
+              超级管理员始终拥有全部权限，无需单独调整。
+            </p>
+            <template v-else>
+              <p class="mb-2 text-xs text-ink-faint">
+                角色提供基础权限；开关可对当前账号额外授权或收回。
+              </p>
+              <div v-for="group in permissionGroups" :key="group.label" class="mb-3 last:mb-0">
+                <p class="mb-1 text-xs font-medium text-ink-soft">{{ group.label }}</p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1.5">
+                  <label
+                    v-for="permission in group.items"
+                    :key="permission.key"
+                    class="flex items-center gap-1.5 text-xs text-ink-soft"
+                  >
+                    <input
+                      type="checkbox"
+                      :checked="hasPermission(user, permission.key)"
+                      :disabled="savingPermissions"
+                      @change="togglePermission(user, permission.key)"
+                    />
+                    {{ permission.label }}
+                  </label>
+                </div>
+              </div>
+            </template>
+          </div>
         </div>
 
         <div class="flex shrink-0 items-center gap-2">

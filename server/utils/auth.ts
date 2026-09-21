@@ -4,7 +4,13 @@ import { db, sqlite } from './db';
 import { adminUser } from './schema';
 import { badRequest } from './errors';
 import { verifyPassword, hashPassword } from './password';
-import { isAdminRole, type AdminRole } from './domain';
+import {
+  isAdminRole,
+  normalizePermissionOverrides,
+  resolveAdminPermissions,
+  type AdminPermission,
+  type AdminRole,
+} from './domain';
 
 const IDLE_TTL_SECONDS = 8 * 60 * 60;
 const MAX_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -16,6 +22,7 @@ export interface AdminSession {
   username: string;
   displayName: string;
   role: AdminRole;
+  permissions: AdminPermission[];
   mustChangePassword: boolean;
   email: string | null;
   emailVerified: boolean;
@@ -105,6 +112,7 @@ export async function login(
       username: user.username,
       displayName: user.displayName ?? user.username,
       role: user.role as AdminRole,
+      permissions: resolveAdminPermissions(user.role as AdminRole, user.permissionOverrides),
       mustChangePassword: user.mustChangePassword === 1,
       email: user.email ?? null,
       emailVerified: !!user.emailVerifiedAt,
@@ -117,7 +125,7 @@ export function verifyToken(token: string): AdminSession | null {
   const current = now();
   const row = sqlite
     .prepare(
-      `SELECT s."csrfToken", s."lastSeenAt", s."expiresAt", s."sessionVersion", u."id", u."username", u."displayName", u."role", u."mustChangePassword", u."email", u."emailVerifiedAt", u."disabled", u."sessionVersion" AS "userSessionVersion"
+      `SELECT s."csrfToken", s."lastSeenAt", s."expiresAt", s."sessionVersion", u."id", u."username", u."displayName", u."role", u."permissionOverrides", u."mustChangePassword", u."email", u."emailVerifiedAt", u."disabled", u."sessionVersion" AS "userSessionVersion"
     FROM "AdminSession" s JOIN "AdminUser" u ON u."id" = s."userId"
     WHERE s."tokenHash" = ? AND s."revokedAt" IS NULL`
     )
@@ -143,6 +151,10 @@ export function verifyToken(token: string): AdminSession | null {
     username: String(row.username),
     displayName: row.displayName ? String(row.displayName) : String(row.username),
     role: row.role as AdminRole,
+    permissions: resolveAdminPermissions(
+      row.role as AdminRole,
+      String(row.permissionOverrides ?? '{}')
+    ),
     mustChangePassword: row.mustChangePassword === 1,
     email: row.email ? String(row.email) : null,
     emailVerified: !!row.emailVerifiedAt,
@@ -227,6 +239,7 @@ export async function updateAdminUser(
     disabled?: boolean;
     password?: string;
     displayName?: string | null;
+    permissionOverrides?: unknown;
   }
 ): Promise<void> {
   if (updates.role && !isAdminRole(updates.role))
@@ -234,12 +247,23 @@ export async function updateAdminUser(
   if (updates.username !== undefined) assertUsername(updates.username);
   if (updates.password) assertPassword(updates.password);
   const normalizedDisplayName = normalizeDisplayName(updates.displayName);
+  let permissionOverrides: string | undefined;
+  if (updates.permissionOverrides !== undefined) {
+    try {
+      permissionOverrides = normalizePermissionOverrides(updates.permissionOverrides);
+    } catch {
+      throw badRequest('INVALID_PERMISSION_OVERRIDES', '权限设置无效');
+    }
+  } else if (updates.role) {
+    permissionOverrides = '{}';
+  }
   const patch: {
     username?: string;
     role?: AdminRole;
     disabled?: number;
     displayName?: string | null;
     passwordHash?: string;
+    permissionOverrides?: string;
     sessionVersion?: ReturnType<typeof sql>;
   } = {};
   if (updates.username !== undefined) patch.username = updates.username;
@@ -247,7 +271,13 @@ export async function updateAdminUser(
   if (typeof updates.disabled === 'boolean') patch.disabled = updates.disabled ? 1 : 0;
   if (updates.password) patch.passwordHash = hashPassword(updates.password);
   if (normalizedDisplayName !== undefined) patch.displayName = normalizedDisplayName;
-  if (updates.role || updates.disabled !== undefined || updates.password)
+  if (permissionOverrides !== undefined) patch.permissionOverrides = permissionOverrides;
+  if (
+    updates.role ||
+    updates.disabled !== undefined ||
+    updates.password ||
+    permissionOverrides !== undefined
+  )
     patch.sessionVersion = sql`${adminUser.sessionVersion} + 1`;
   sqlite.transaction(() => {
     const user = sqlite

@@ -63,6 +63,7 @@ export const adminUser = table('AdminUser', {
   displayName: text('displayName'),
   passwordHash: text('passwordHash').notNull(),
   role: text('role').notNull().default('PLANNER'),
+  permissionOverrides: text('permissionOverrides').notNull().default('{}'),
   mustChangePassword: integer('mustChangePassword').notNull().default(0),
   disabled: integer('disabled').notNull().default(0),
   lastLoginAt: integer('lastLoginAt'),

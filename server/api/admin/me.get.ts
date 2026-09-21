@@ -26,6 +26,7 @@ export default defineEventHandler(async (event) => {
     username: session.username,
     displayName: session.displayName,
     role: session.role,
+    permissions: session.permissions,
     mustChangePassword: site.forceChangePassword && session.mustChangePassword,
     mustBindEmail: site.requireEmailBind && !session.emailVerified,
     email: session.email,
