@@ -11,7 +11,7 @@ import {
   isValidDate,
 } from './schedule';
 import { isUniqueViolation, newQueryCode } from './requests';
-import { decodeWordList } from './domain';
+import { decodeWordList, encodeWordList } from './domain';
 
 const PAGE_SIZE = 20;
 
@@ -38,10 +38,13 @@ export async function listAdminRequests(params: ListParams) {
     conditions.push(sql`${songRequest.createdAt} < ${dayEnd}`);
   }
 
-  const where = conditions.length > 0 ? and(...conditions) : undefined;
-
   const recentPlaybackSince = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
   const groupKey = sql`COALESCE(${songRequest.groupId}, ${songRequest.id})`;
+  const activeGroup = sql`EXISTS (SELECT 1 FROM "SongRequest" AS "member" WHERE "member"."groupId" = ${songRequest.groupId} AND ("member"."status" = 'PENDING' OR ("member"."status" = 'SCHEDULED' AND "member"."playbackStatus" != 'PLAYED')))`;
+  if (!params.status) {
+    conditions.push(activeGroup);
+  }
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
   const [totalResult, items] = await Promise.all([
     db
       .select({ count: sql<number>`COUNT(DISTINCT ${groupKey})` })
@@ -69,7 +72,7 @@ export async function listAdminRequests(params: ListParams) {
             AND "played"."playbackStatus" = 'PLAYED'
             AND "played"."finalizedAt" >= ${recentPlaybackSince}
         )`,
-        status: sql<string>`MIN(${songRequest.status})`,
+        status: sql<string>`CASE WHEN SUM(CASE WHEN ${songRequest.status} = 'PENDING' THEN 1 ELSE 0 END) > 0 THEN 'PENDING' WHEN SUM(CASE WHEN ${songRequest.status} = 'SCHEDULED' THEN 1 ELSE 0 END) > 0 THEN 'SCHEDULED' ELSE 'REJECTED' END`,
         source: sql<string>`MIN(${songRequest.source})`,
         platformId: sql<string>`MIN(${songRequest.platformId})`,
         title: sql<string>`MIN(${songRequest.title})`,
@@ -337,31 +340,43 @@ export async function manualAddRequest(
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       queryCode = newQueryCode();
-      const group = sqlite
-        .prepare('SELECT "id" FROM "SongRequestGroup" WHERE "source" = ? AND "platformId" = ?')
-        .get(song.source, String(song.platformId)) as { id: string } | undefined;
-      const groupId = group?.id ?? `grp_${randomBytes(8).toString('hex')}`;
-      if (!group) {
+      const now = Math.floor(Date.now() / 1000);
+      sqlite.transaction(() => {
+        const group = sqlite
+          .prepare(
+            'SELECT g."id" FROM "SongRequestGroup" g WHERE g."source" = ? AND g."platformId" = ? AND EXISTS (SELECT 1 FROM "SongRequest" r WHERE r."groupId" = g."id" AND (r."status" = ? OR (r."status" = ? AND r."playbackStatus" != ?))) ORDER BY g."createdAt" DESC LIMIT 1'
+          )
+          .get(song.source, String(song.platformId), 'PENDING', 'SCHEDULED', 'PLAYED') as
+          { id: string } | undefined;
+        const groupId = group?.id ?? `grp_${randomBytes(8).toString('hex')}`;
+        if (!group) {
+          sqlite
+            .prepare(
+              'INSERT INTO "SongRequestGroup" ("id", "source", "platformId") VALUES (?, ?, ?)'
+            )
+            .run(groupId, song.source, String(song.platformId));
+        }
         sqlite
-          .prepare('INSERT INTO "SongRequestGroup" ("id", "source", "platformId") VALUES (?, ?, ?)')
-          .run(groupId, song.source, String(song.platformId));
-      }
-      await db.insert(songRequest).values({
-        id,
-        queryCode,
-        source: song.source,
-        platformId: String(song.platformId),
-        groupId,
-        title: song.title,
-        artist: song.artist,
-        album: song.album ?? null,
-        durationMs: song.durationMs,
-        coverUrl: song.coverUrl ?? null,
-        flaggedWords: '[]',
-        isManual: 1,
-        submitIp: 'admin',
-        createdAt: Math.floor(Date.now() / 1000),
-      });
+          .prepare(
+            'INSERT INTO "SongRequest" ("id", "queryCode", "source", "platformId", "groupId", "title", "artist", "album", "durationMs", "coverUrl", "flaggedWords", "isManual", "submitIp", "createdAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+          )
+          .run(
+            id,
+            queryCode,
+            song.source,
+            String(song.platformId),
+            groupId,
+            song.title,
+            song.artist,
+            song.album ?? null,
+            song.durationMs,
+            song.coverUrl ?? null,
+            encodeWordList([]),
+            1,
+            'admin',
+            now
+          );
+      })();
       break;
     } catch (error) {
       if (!isUniqueViolation(error) || attempt === 4) throw error;

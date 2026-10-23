@@ -159,8 +159,11 @@ export async function submitRequest(
           assertNoActiveIdentityRequest(activeCount);
         }
         const group = sqlite
-          .prepare('SELECT "id" FROM "SongRequestGroup" WHERE "source" = ? AND "platformId" = ?')
-          .get(song.source, song.platformId) as { id: string } | undefined;
+          .prepare(
+            'SELECT g."id" FROM "SongRequestGroup" g WHERE g."source" = ? AND g."platformId" = ? AND EXISTS (SELECT 1 FROM "SongRequest" r WHERE r."groupId" = g."id" AND (r."status" = ? OR (r."status" = ? AND r."playbackStatus" != ?))) ORDER BY g."createdAt" DESC LIMIT 1'
+          )
+          .get(song.source, song.platformId, 'PENDING', 'SCHEDULED', 'PLAYED') as
+          { id: string } | undefined;
         const groupId = group?.id ?? `grp_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
         if (!group) {
           sqlite
