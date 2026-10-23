@@ -295,6 +295,8 @@ export const readSiteConfig = () =>
     requireIdentity: boolean;
     forceChangePassword: boolean;
     requireEmailBind: boolean;
+    blockJapaneseKana: boolean;
+    blockKoreanHangul: boolean;
     announcement: string;
     maxScheduleDays: number;
   }>('/api/admin/config/site');
@@ -305,6 +307,8 @@ export const saveSiteConfig = (body: {
   requireIdentity?: boolean;
   forceChangePassword?: boolean;
   requireEmailBind?: boolean;
+  blockJapaneseKana?: boolean;
+  blockKoreanHangul?: boolean;
   announcement?: string;
   maxScheduleDays?: number;
 }) => put<unknown>('/api/admin/config/site', body);

@@ -32,10 +32,18 @@ export default defineEventHandler(async (event) => {
     await getRequestAudio(id);
   }
   const finalizedAt = body.status === 'PLAYED' ? Math.floor(Date.now() / 1000) : null;
-  await db
-    .update(songRequest)
-    .set({ playbackStatus: body.status, finalizedAt })
-    .where(eq(songRequest.id, id));
+  if (request.groupId) {
+    const result = db
+      .update(songRequest)
+      .set({ playbackStatus: body.status, finalizedAt })
+      .where(eq(songRequest.groupId, request.groupId));
+    await result;
+  } else {
+    await db
+      .update(songRequest)
+      .set({ playbackStatus: body.status, finalizedAt })
+      .where(eq(songRequest.id, id));
+  }
   await writeAudit(session.userId, 'request.playback', id, { from: current, to: body.status });
   return { ok: true, status: body.status };
 });

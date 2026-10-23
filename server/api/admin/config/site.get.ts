@@ -17,5 +17,7 @@ export default defineEventHandler(async (event) => {
     maxScheduleDays: site.maxScheduleDays,
     forceChangePassword: site.forceChangePassword,
     requireEmailBind: site.requireEmailBind,
+    blockJapaneseKana: site.blockJapaneseKana,
+    blockKoreanHangul: site.blockKoreanHangul,
   };
 });

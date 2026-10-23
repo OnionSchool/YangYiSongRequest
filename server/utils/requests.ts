@@ -5,11 +5,11 @@ import { songRequest, schedule, broadcastSlot } from './schema';
 import { GRADE_LABELS, encodeWordList, isGrade, isRequestStatus } from './domain';
 import type { Grade, RequestStatus, SourceId } from './domain';
 import { badRequest, notFound, tooMany } from './errors';
-import { IDENTITY_DAILY_LIMIT, IP_DAILY_LIMIT, isInternalRateLimitEnabled } from './rate-limits';
+import { IP_DAILY_LIMIT, isInternalRateLimitEnabled } from './rate-limits';
 import { shanghaiDayStart } from './time';
 import { isValid6DigitCode } from './runtime';
 import { getSource } from './music-sources';
-import { findBannedHits } from './banned-words';
+import { findBannedHits, findContentScriptHits } from './banned-words';
 import { readSite } from './site';
 
 /**
@@ -56,7 +56,7 @@ export function normalizeIdentity(
   return { grade, classNo, requesterName };
 }
 
-export function assertDailyLimits(ipUsed: number, identityUsed: number | null): void {
+export function assertDailyLimits(ipUsed: number): void {
   if (!isInternalRateLimitEnabled()) return;
   if (ipUsed >= IP_DAILY_LIMIT) {
     throw tooMany('RATE_LIMIT_IP', '请求数已达上限，请稍后再试', {
@@ -64,11 +64,11 @@ export function assertDailyLimits(ipUsed: number, identityUsed: number | null): 
       window: 'day',
     });
   }
-  if (identityUsed !== null && identityUsed >= IDENTITY_DAILY_LIMIT) {
-    throw tooMany('RATE_LIMIT_IDENTITY', `每人每天最多点 ${IDENTITY_DAILY_LIMIT} 首，明天再来`, {
-      limit: IDENTITY_DAILY_LIMIT,
-      window: 'day',
-    });
+}
+
+function assertNoActiveIdentityRequest(activeCount: number): void {
+  if (activeCount > 0) {
+    throw tooMany('REQUEST_CYCLE_ACTIVE', '你还有一首点歌正在等待播出，播出、驳回或取消后再来点歌');
   }
 }
 
@@ -120,7 +120,10 @@ export async function submitRequest(
     };
   }
 
-  const flagged = await findBannedHits(song.title, song.artist, identity?.requesterName);
+  const flagged = [
+    ...(await findBannedHits(song.title, song.artist, identity?.requesterName)),
+    ...findContentScriptHits(site, song.title, song.artist, identity?.requesterName),
+  ];
   if (flagged.length > 0) {
     throw badRequest('CONTENT_BLOCKED', '提交内容不符合规范，请更换后再试');
   }
@@ -137,27 +140,45 @@ export async function submitRequest(
             )
             .get(ip, since) as { count: number }
         ).count;
-        const identityUsed = identity
-          ? (
-              sqlite
-                .prepare(
-                  'SELECT COUNT(*) AS "count" FROM "SongRequest" WHERE "grade" = ? AND "classNo" = ? AND "requesterName" = ? AND "createdAt" >= ?'
-                )
-                .get(identity.grade, identity.classNo, identity.requesterName, since) as {
-                count: number;
-              }
-            ).count
-          : null;
-        assertDailyLimits(ipUsed, identityUsed);
+        assertDailyLimits(ipUsed);
+        if (identity) {
+          const activeCount = (
+            sqlite
+              .prepare(
+                'SELECT COUNT(*) AS "count" FROM "SongRequest" WHERE "grade" = ? AND "classNo" = ? AND "requesterName" = ? AND ("status" = ? OR ("status" = ? AND "playbackStatus" != ?))'
+              )
+              .get(
+                identity.grade,
+                identity.classNo,
+                identity.requesterName,
+                'PENDING',
+                'SCHEDULED',
+                'PLAYED'
+              ) as { count: number }
+          ).count;
+          assertNoActiveIdentityRequest(activeCount);
+        }
+        const group = sqlite
+          .prepare('SELECT "id" FROM "SongRequestGroup" WHERE "source" = ? AND "platformId" = ?')
+          .get(song.source, song.platformId) as { id: string } | undefined;
+        const groupId = group?.id ?? `grp_${crypto.randomUUID().replaceAll('-', '').slice(0, 16)}`;
+        if (!group) {
+          sqlite
+            .prepare(
+              'INSERT INTO "SongRequestGroup" ("id", "source", "platformId") VALUES (?, ?, ?)'
+            )
+            .run(groupId, song.source, song.platformId);
+        }
         sqlite
           .prepare(
-            'INSERT INTO "SongRequest" ("id", "queryCode", "source", "platformId", "title", "artist", "album", "durationMs", "coverUrl", "grade", "classNo", "requesterName", "flaggedWords", "submitIp", "submitUserAgent") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO "SongRequest" ("id", "queryCode", "source", "platformId", "groupId", "title", "artist", "album", "durationMs", "coverUrl", "grade", "classNo", "requesterName", "flaggedWords", "submitIp", "submitUserAgent") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
           )
           .run(
             `req_${crypto.randomUUID().substring(2, 11)}`,
             qc,
             song.source,
             song.platformId,
+            groupId,
             song.title,
             song.artist,
             song.album ?? null,

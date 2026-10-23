@@ -25,6 +25,8 @@ const guestPreviewOpen = ref(true);
 const requireIdentity = ref(true);
 const forceChangePassword = ref(true);
 const requireEmailBind = ref(false);
+const blockJapaneseKana = ref(true);
+const blockKoreanHangul = ref(true);
 const announcement = ref('');
 const maxScheduleDays = ref(14);
 const siteMsg = ref<string | null>(null);
@@ -75,7 +77,9 @@ async function loadAll() {
       guestPreviewOpen.value = site.guestPreviewOpen;
       requireIdentity.value = site.requireIdentity;
       forceChangePassword.value = site.forceChangePassword ?? true;
-      requireEmailBind.value = site.requireEmailBind ?? false;
+      requireEmailBind.value = site.requireEmailBind ?? true;
+      blockJapaneseKana.value = site.blockJapaneseKana ?? true;
+      blockKoreanHangul.value = site.blockKoreanHangul ?? true;
       announcement.value = site.announcement;
       maxScheduleDays.value = site.maxScheduleDays;
     }
@@ -116,6 +120,8 @@ async function saveSite() {
       requireIdentity: requireIdentity.value,
       forceChangePassword: forceChangePassword.value,
       requireEmailBind: requireEmailBind.value,
+      blockJapaneseKana: blockJapaneseKana.value,
+      blockKoreanHangul: blockKoreanHangul.value,
       announcement: announcement.value,
       maxScheduleDays: maxScheduleDays.value,
     });
@@ -300,6 +306,34 @@ onMounted(loadAll);
           </div>
           <label class="relative inline-flex items-center cursor-pointer">
             <input v-model="requireEmailBind" type="checkbox" class="sr-only peer" />
+            <div
+              class="w-10 h-6 bg-rule rounded-full peer-checked:bg-green-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"
+            />
+          </label>
+        </div>
+
+        <div class="border-t border-rule pt-5 flex items-center justify-between">
+          <div>
+            <p class="font-medium">屏蔽日文假名</p>
+            <p class="text-sm text-ink-faint mt-0.5">
+              拦截平假名、片假名和半角片假名；不拦截中日共用汉字
+            </p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input v-model="blockJapaneseKana" type="checkbox" class="sr-only peer" />
+            <div
+              class="w-10 h-6 bg-rule rounded-full peer-checked:bg-green-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"
+            />
+          </label>
+        </div>
+
+        <div class="border-t border-rule pt-5 flex items-center justify-between">
+          <div>
+            <p class="font-medium">屏蔽韩文</p>
+            <p class="text-sm text-ink-faint mt-0.5">拦截韩文字母和音节字符</p>
+          </div>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input v-model="blockKoreanHangul" type="checkbox" class="sr-only peer" />
             <div
               class="w-10 h-6 bg-rule rounded-full peer-checked:bg-green-500 transition-colors after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"
             />

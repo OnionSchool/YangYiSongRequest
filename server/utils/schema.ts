@@ -133,11 +133,21 @@ export const auditLog = table('AuditLog', {
     .default(sql`unixepoch()`),
 });
 
+export const songRequestGroup = table('SongRequestGroup', {
+  id: text('id').primaryKey(),
+  source: text('source').notNull(),
+  platformId: text('platformId').notNull(),
+  createdAt: integer('createdAt')
+    .notNull()
+    .default(sql`unixepoch()`),
+});
+
 export const songRequest = table('SongRequest', {
   id: text('id').primaryKey(),
   queryCode: text('queryCode').notNull().unique(),
   source: text('source').notNull(),
   platformId: text('platformId').notNull(),
+  groupId: text('groupId'),
   title: text('title').notNull(),
   artist: text('artist').notNull(),
   album: text('album'),

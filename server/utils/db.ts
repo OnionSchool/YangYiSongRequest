@@ -36,7 +36,7 @@ export async function runMigrations(): Promise<void> {
       sqlite
         .prepare('SELECT "name" FROM "SchemaMigration"')
         .all()
-        .map((row) => row.name as string)
+        .map((row: { name: string }) => row.name)
     );
     const recordMigration = sqlite.prepare('INSERT INTO "SchemaMigration" ("name") VALUES (?)');
     for (const name of migrations) {
@@ -56,6 +56,8 @@ export async function runMigrations(): Promise<void> {
       INSERT OR IGNORE INTO "SiteSetting" ("key", "value") VALUES ('requireIdentity', 'true');
       INSERT OR IGNORE INTO "SiteSetting" ("key", "value") VALUES ('announcement', '');
       INSERT OR IGNORE INTO "SiteSetting" ("key", "value") VALUES ('maxScheduleDays', '14');
+      INSERT OR IGNORE INTO "SiteSetting" ("key", "value") VALUES ('blockJapaneseKana', 'true');
+      INSERT OR IGNORE INTO "SiteSetting" ("key", "value") VALUES ('blockKoreanHangul', 'true');
     `);
     sqlite.exec('COMMIT');
   } catch (error) {

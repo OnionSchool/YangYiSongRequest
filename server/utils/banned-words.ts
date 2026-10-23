@@ -5,6 +5,14 @@ const CACHE_TTL_MS = 60_000;
 
 type BannedRule = { raw: string; kind: 'literal' | 'regex'; value: string };
 
+export interface ContentScriptPolicy {
+  blockJapaneseKana: boolean;
+  blockKoreanHangul: boolean;
+}
+
+const JAPANESE_KANA_RE = /[\p{Script=Hiragana}\p{Script=Katakana}\uFF66-\uFF9F]/u;
+const KOREAN_HANGUL_RE = /\p{Script=Hangul}/u;
+
 let cache: { at: number; rules: BannedRule[] } | null = null;
 
 export function invalidateBannedWords(): void {
@@ -16,6 +24,17 @@ export function normalizeContent(value: string): string {
     .normalize('NFKC')
     .toLocaleLowerCase('zh-CN')
     .replace(/[\s\p{P}\p{S}_]+/gu, '');
+}
+
+export function findContentScriptHits(
+  policy: ContentScriptPolicy,
+  ...texts: Array<string | null | undefined>
+): string[] {
+  const raw = texts.filter((text): text is string => typeof text === 'string').join(' ');
+  return [
+    ...(policy.blockJapaneseKana && JAPANESE_KANA_RE.test(raw) ? ['日文假名'] : []),
+    ...(policy.blockKoreanHangul && KOREAN_HANGUL_RE.test(raw) ? ['韩文'] : []),
+  ];
 }
 
 export function validateBannedRule(value: unknown): string {
@@ -77,8 +96,8 @@ export async function findBannedHits(
   ...texts: Array<string | null | undefined>
 ): Promise<string[]> {
   const rules = await loadRules();
-  if (rules.length === 0) return [];
   const raw = texts.filter((text): text is string => typeof text === 'string').join(' ');
+  if (rules.length === 0) return [];
   const normalized = normalizeContent(raw);
   return rules
     .filter((rule) =>

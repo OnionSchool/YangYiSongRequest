@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, setHeader } from 'h3';
-import { findBannedHits } from '../../utils/banned-words';
+import { findBannedHits, findContentScriptHits } from '../../utils/banned-words';
+import { readSite } from '../../utils/site';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -7,5 +8,7 @@ export default defineEventHandler(async (event) => {
   const texts = [body?.title, body?.artist, body?.requesterName].filter(
     (value): value is string => typeof value === 'string'
   );
-  return { allowed: (await findBannedHits(...texts)).length === 0 };
+  const site = await readSite();
+  const hits = [...(await findBannedHits(...texts)), ...findContentScriptHits(site, ...texts)];
+  return { allowed: hits.length === 0 };
 });

@@ -11,6 +11,7 @@ import {
   isValidDate,
 } from './schedule';
 import { isUniqueViolation, newQueryCode } from './requests';
+import { decodeWordList } from './domain';
 
 const PAGE_SIZE = 20;
 
@@ -93,7 +94,7 @@ export async function listAdminRequests(params: ListParams) {
       requester: r.requesterName
         ? `${r.grade ?? ''}${r.classNo ? `(${r.classNo})` : ''} ${r.requesterName}`
         : null,
-      flaggedWords: JSON.parse(r.flaggedWords || '[]'),
+      flaggedWords: decodeWordList(r.flaggedWords),
       isManual: r.isManual === 1,
       rejectReason: r.rejectReason,
       createdAt: new Date(r.createdAt * 1000).toISOString(),
@@ -123,10 +124,18 @@ export async function scheduleRequest(
   const now = Math.floor(Date.now() / 1000);
   const result = sqlite.transaction(() => {
     const req = sqlite
-      .prepare('SELECT "status", "durationMs" FROM "SongRequest" WHERE "id" = ?')
-      .get(requestId) as { status: string; durationMs: number } | undefined;
+      .prepare('SELECT "status", "durationMs", "groupId" FROM "SongRequest" WHERE "id" = ?')
+      .get(requestId) as { status: string; durationMs: number; groupId: string | null } | undefined;
     if (!req) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
     if (req.status !== 'PENDING') throw badRequest('REQUEST_NOT_PENDING', '该请求不可再次排期');
+    const scheduledInGroup = req.groupId
+      ? sqlite
+          .prepare(
+            'SELECT 1 FROM "SongRequest" WHERE "groupId" = ? AND "status" = ? AND "playbackStatus" != ? LIMIT 1'
+          )
+          .get(req.groupId, 'SCHEDULED', 'PLAYED')
+      : null;
+    if (scheduledInGroup) throw badRequest('REQUEST_ALREADY_SCHEDULED', '这首歌已经排期');
     const existing = sqlite
       .prepare('SELECT "id" FROM "Schedule" WHERE "requestId" = ?')
       .get(requestId);
@@ -162,12 +171,18 @@ export async function scheduleRequest(
         'INSERT INTO "Schedule" ("id", "requestId", "playDate", "slotId", "orderNo", "createdAt") VALUES (?, ?, ?, ?, ?, ?)'
       )
       .run(scheduleId, requestId, playDate, slotId, orderNo, now);
-    const updated = sqlite
-      .prepare(
-        'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = NULL WHERE "id" = ? AND "status" = ?'
-      )
-      .run('SCHEDULED', 'PENDING_DOWNLOAD', now, actorId, requestId, 'PENDING');
-    if (updated.changes !== 1) throw badRequest('REQUEST_NOT_PENDING', '该请求不可再次排期');
+    const updated = req.groupId
+      ? sqlite
+          .prepare(
+            'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = NULL WHERE "groupId" = ? AND "status" = ?'
+          )
+          .run('SCHEDULED', 'PENDING_DOWNLOAD', now, actorId, req.groupId, 'PENDING')
+      : sqlite
+          .prepare(
+            'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = NULL WHERE "id" = ? AND "status" = ?'
+          )
+          .run('SCHEDULED', 'PENDING_DOWNLOAD', now, actorId, requestId, 'PENDING');
+    if (updated.changes < 1) throw badRequest('REQUEST_NOT_PENDING', '该请求不可再次排期');
     return { orderNo, version, durationIncomplete };
   })();
   await writeAudit(actorId, 'request.schedule', requestId, {
@@ -181,12 +196,24 @@ export async function scheduleRequest(
 export async function rejectRequest(requestId: string, reason: string, actorId: string) {
   const now = Math.floor(Date.now() / 1000);
   sqlite.transaction(() => {
-    const updated = sqlite
-      .prepare(
-        'UPDATE "SongRequest" SET "status" = ?, "rejectReason" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = ? WHERE "id" = ? AND "status" = ?'
-      )
-      .run('REJECTED', reason, now, actorId, now, requestId, 'PENDING');
-    if (updated.changes === 1) return;
+    const request = sqlite
+      .prepare('SELECT "groupId" FROM "SongRequest" WHERE "id" = ?')
+      .get(requestId) as { groupId: string | null } | undefined;
+    if (!request) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
+    const updated = request.groupId
+      ? sqlite
+          .prepare(
+            'UPDATE "SongRequest" SET "status" = ?, "rejectReason" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = ? WHERE "groupId" = ? AND "status" = ?'
+          )
+          .run('REJECTED', reason, now, actorId, now, request.groupId, 'PENDING')
+      : sqlite
+          .prepare(
+            'UPDATE "SongRequest" SET "status" = ?, "rejectReason" = ?, "reviewedAt" = ?, "reviewedById" = ?, "finalizedAt" = ? WHERE "id" = ? AND "status" = ?'
+          )
+          .run('REJECTED', reason, now, actorId, now, requestId, 'PENDING');
+    if (updated.changes >= 1) {
+      return;
+    }
     const exists = sqlite.prepare('SELECT 1 FROM "SongRequest" WHERE "id" = ?').get(requestId);
     if (!exists) throw notFound('REQUEST_NOT_FOUND', '找不到该请求');
     throw badRequest('REQUEST_NOT_PENDING', '该请求不可驳回');
@@ -209,18 +236,19 @@ export async function unscheduleRequest(
   if (!scheduled[0]) throw notFound('SCHEDULE_NOT_FOUND', '找不到排期记录');
   const result = sqlite.transaction(() => {
     const request = sqlite
-      .prepare('SELECT "playbackStatus" FROM "SongRequest" WHERE "id" = ?')
-      .get(requestId) as { playbackStatus: string } | undefined;
+      .prepare('SELECT "playbackStatus", "groupId" FROM "SongRequest" WHERE "id" = ?')
+      .get(requestId) as { playbackStatus: string; groupId: string | null } | undefined;
     if (request?.playbackStatus === 'PLAYED') {
       throw badRequest('REQUEST_ALREADY_PLAYED', '已播放歌曲不能撤回排期');
     }
     const version = updateScheduleVersion(scheduled[0].playDate, expectedVersion);
     sqlite.prepare('DELETE FROM "Schedule" WHERE "requestId" = ?').run(requestId);
-    sqlite
-      .prepare(
-        'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = NULL, "reviewedById" = NULL WHERE "id" = ?'
-      )
-      .run('PENDING', 'PENDING_DOWNLOAD', requestId);
+    const reset = sqlite.prepare(
+      request?.groupId
+        ? 'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = NULL, "reviewedById" = NULL WHERE "groupId" = ?'
+        : 'UPDATE "SongRequest" SET "status" = ?, "playbackStatus" = ?, "reviewedAt" = NULL, "reviewedById" = NULL WHERE "id" = ?'
+    );
+    reset.run('PENDING', 'PENDING_DOWNLOAD', request?.groupId ?? requestId);
     return { version };
   })();
 
@@ -276,11 +304,21 @@ export async function manualAddRequest(
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       queryCode = newQueryCode();
+      const group = sqlite
+        .prepare('SELECT "id" FROM "SongRequestGroup" WHERE "source" = ? AND "platformId" = ?')
+        .get(song.source, String(song.platformId)) as { id: string } | undefined;
+      const groupId = group?.id ?? `grp_${randomBytes(8).toString('hex')}`;
+      if (!group) {
+        sqlite
+          .prepare('INSERT INTO "SongRequestGroup" ("id", "source", "platformId") VALUES (?, ?, ?)')
+          .run(groupId, song.source, String(song.platformId));
+      }
       await db.insert(songRequest).values({
         id,
         queryCode,
         source: song.source,
         platformId: String(song.platformId),
+        groupId,
         title: song.title,
         artist: song.artist,
         album: song.album ?? null,

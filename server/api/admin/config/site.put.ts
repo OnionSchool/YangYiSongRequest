@@ -47,6 +47,12 @@ export default defineEventHandler(async (event) => {
   if (typeof body.requireEmailBind === 'boolean') {
     updates.requireEmailBind = encodeBool(body.requireEmailBind);
   }
+  if (typeof body.blockJapaneseKana === 'boolean') {
+    updates.blockJapaneseKana = encodeBool(body.blockJapaneseKana);
+  }
+  if (typeof body.blockKoreanHangul === 'boolean') {
+    updates.blockKoreanHangul = encodeBool(body.blockKoreanHangul);
+  }
 
   for (const [key, value] of Object.entries(updates)) {
     const existingCount = await db.select().from(siteSetting).where(eq(siteSetting.key, key));
