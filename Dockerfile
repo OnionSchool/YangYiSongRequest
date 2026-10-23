@@ -1,16 +1,14 @@
 # syntax=docker/dockerfile:1
 
-FROM oven/bun:1.3.13-alpine AS deps
+ARG BUILD_BASE_IMAGE=ghcr.io/onionschool/yangyisongrequest-build-base:1.3.13
+FROM ${BUILD_BASE_IMAGE} AS deps
 WORKDIR /app
 
-# Alpine 未提供独立的 node-gyp 包，better-sqlite3 需要 npm 安装的 node-gyp 与本机构建工具。
-RUN apk add --no-cache python3 make g++ nodejs npm \
-  && npm install --global node-gyp
 COPY package.json bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
   bun install --frozen-lockfile
 
-FROM oven/bun:1.3.13-alpine AS builder
+FROM ${BUILD_BASE_IMAGE} AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . ./
