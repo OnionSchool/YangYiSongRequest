@@ -40,37 +40,61 @@ export async function listAdminRequests(params: ListParams) {
 
   const where = conditions.length > 0 ? and(...conditions) : undefined;
 
+  const recentPlaybackSince = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
+  const groupKey = sql`COALESCE(${songRequest.groupId}, ${songRequest.id})`;
   const [totalResult, items] = await Promise.all([
-    db.select({ count: count() }).from(songRequest).where(where),
+    db
+      .select({ count: sql<number>`COUNT(DISTINCT ${groupKey})` })
+      .from(songRequest)
+      .where(where),
     db
       .select({
-        id: songRequest.id,
-        queryCode: songRequest.queryCode,
-        status: songRequest.status,
-        source: songRequest.source,
-        platformId: songRequest.platformId,
-        title: songRequest.title,
-        artist: songRequest.artist,
-        album: songRequest.album,
-        coverUrl: songRequest.coverUrl,
-        durationMs: songRequest.durationMs,
-        grade: songRequest.grade,
-        classNo: songRequest.classNo,
-        requesterName: songRequest.requesterName,
-        flaggedWords: songRequest.flaggedWords,
-        isManual: songRequest.isManual,
-        rejectReason: songRequest.rejectReason,
-        createdAt: songRequest.createdAt,
-        schedulePlayDate: schedule.playDate,
-        scheduleSlotId: schedule.slotId,
-        scheduleOrderNo: schedule.orderNo,
-        slotName: broadcastSlot.name,
+        id: sql<string>`MIN(${songRequest.id})`,
+        queryCode: sql<string>`MIN(${songRequest.queryCode})`,
+        requestCount: count(songRequest.id),
+        requesters: sql<string | null>`GROUP_CONCAT(${songRequest.requesterName}, '、')`,
+        recentPlayCount: sql<number>`(
+          SELECT COUNT(*)
+          FROM "SongRequest" AS "played"
+          WHERE "played"."source" = ${songRequest.source}
+            AND "played"."platformId" = ${songRequest.platformId}
+            AND "played"."playbackStatus" = 'PLAYED'
+            AND "played"."finalizedAt" >= ${recentPlaybackSince}
+        )`,
+        lastPlayedAt: sql<number | null>`(
+          SELECT MAX("played"."finalizedAt")
+          FROM "SongRequest" AS "played"
+          WHERE "played"."source" = ${songRequest.source}
+            AND "played"."platformId" = ${songRequest.platformId}
+            AND "played"."playbackStatus" = 'PLAYED'
+            AND "played"."finalizedAt" >= ${recentPlaybackSince}
+        )`,
+        status: sql<string>`MIN(${songRequest.status})`,
+        source: sql<string>`MIN(${songRequest.source})`,
+        platformId: sql<string>`MIN(${songRequest.platformId})`,
+        title: sql<string>`MIN(${songRequest.title})`,
+        artist: sql<string>`MIN(${songRequest.artist})`,
+        album: sql<string | null>`MIN(${songRequest.album})`,
+        coverUrl: sql<string | null>`MIN(${songRequest.coverUrl})`,
+        durationMs: sql<number>`MIN(${songRequest.durationMs})`,
+        grade: sql<string | null>`MIN(${songRequest.grade})`,
+        classNo: sql<number | null>`MIN(${songRequest.classNo})`,
+        requesterName: sql<string | null>`MIN(${songRequest.requesterName})`,
+        flaggedWords: sql<string>`MIN(${songRequest.flaggedWords})`,
+        isManual: sql<number>`MIN(${songRequest.isManual})`,
+        rejectReason: sql<string | null>`MIN(${songRequest.rejectReason})`,
+        createdAt: sql<number>`MAX(${songRequest.createdAt})`,
+        schedulePlayDate: sql<string | null>`MIN(${schedule.playDate})`,
+        scheduleSlotId: sql<string | null>`MIN(${schedule.slotId})`,
+        scheduleOrderNo: sql<number | null>`MIN(${schedule.orderNo})`,
+        slotName: sql<string | null>`MIN(${broadcastSlot.name})`,
       })
       .from(songRequest)
       .leftJoin(schedule, eq(songRequest.id, schedule.requestId))
       .leftJoin(broadcastSlot, eq(schedule.slotId, broadcastSlot.id))
       .where(where)
-      .orderBy(desc(songRequest.createdAt))
+      .groupBy(groupKey)
+      .orderBy(desc(sql`MAX(${songRequest.createdAt})`))
       .limit(PAGE_SIZE)
       .offset(offset),
   ]);
@@ -91,8 +115,17 @@ export async function listAdminRequests(params: ListParams) {
       coverUrl: r.coverUrl,
       durationMs: r.durationMs,
       vipHint: false,
-      requester: r.requesterName
-        ? `${r.grade ?? ''}${r.classNo ? `(${r.classNo})` : ''} ${r.requesterName}`
+      requester:
+        r.requesters ||
+        (r.requesterName
+          ? `${r.grade ?? ''}${r.classNo ? `(${r.classNo})` : ''} ${r.requesterName}`
+          : null),
+      requestCount: Number(r.requestCount),
+      recentPlay: r.lastPlayedAt
+        ? {
+            count: Number(r.recentPlayCount),
+            lastPlayedAt: new Date(Number(r.lastPlayedAt) * 1000).toISOString(),
+          }
         : null,
       flaggedWords: decodeWordList(r.flaggedWords),
       isManual: r.isManual === 1,

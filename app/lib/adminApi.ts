@@ -42,6 +42,8 @@ export interface AdminRequest {
   durationMs: number;
   vipHint: boolean;
   requester: string | null;
+  requestCount: number;
+  recentPlay: { count: number; lastPlayedAt: string } | null;
   flaggedWords: string[];
   isManual: boolean;
   rejectReason: string | null;

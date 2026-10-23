@@ -145,6 +145,12 @@ function formatDuration(ms: number) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(
+    new Date(value)
+  );
+}
+
 function previewing(item: AdminRequest) {
   return player.isCurrent(item.source, item.platformId, true);
 }
@@ -252,6 +258,18 @@ onMounted(load);
                       : '试听'
                 }}
               </button>
+              <span
+                v-if="item.requestCount > 1"
+                class="rounded-md border border-orange/30 bg-orange/10 px-1.5 py-0.5 font-medium text-orange-deep"
+              >
+                {{ item.requestCount }} 人点播
+              </span>
+              <span
+                v-if="item.recentPlay"
+                class="rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 font-medium text-amber-800"
+              >
+                近 30 天已播 {{ item.recentPlay.count }} 次
+              </span>
               <span v-if="item.requester" class="flex items-center gap-1">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -325,6 +343,9 @@ onMounted(load);
         </div>
         <p v-if="previewing(item) && player.error" class="mt-2 ml-15 text-xs text-red-500">
           {{ player.error }}
+        </p>
+        <p v-if="item.recentPlay" class="mt-2 ml-15 text-xs text-amber-700">
+          最近播放：{{ formatDate(item.recentPlay.lastPlayedAt) }}
         </p>
         <p v-if="item.rejectReason" class="mt-2 ml-15 text-xs text-red-500">
           驳回理由：{{ item.rejectReason }}
