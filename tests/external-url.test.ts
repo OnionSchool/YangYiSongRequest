@@ -3,7 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 process.env.MUSIC_EXTERNAL_HOSTS = '127.0.0.1,192.168.1.1';
 
 const { clients, lookup, undiciFetch } = vi.hoisted(() => {
-  const clients: Array<{ close: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }> = [];
+  const clients: Array<{
+    close: ReturnType<typeof vi.fn>;
+    destroy: ReturnType<typeof vi.fn>;
+    options: { connect?: { autoSelectFamily?: boolean } };
+  }> = [];
   return { clients, lookup: vi.fn(), undiciFetch: vi.fn() };
 });
 vi.mock('node:dns/promises', () => ({ lookup }));
@@ -12,9 +16,12 @@ vi.mock('undici', () => ({
     close = vi.fn().mockResolvedValue(null);
     destroy = vi.fn();
 
-    constructor(..._args: unknown[]) {
+    constructor(_origin: string, options: { connect?: { autoSelectFamily?: boolean } }) {
+      this.options = options;
       clients.push(this);
     }
+
+    options!: { connect?: { autoSelectFamily?: boolean } };
   },
   fetch: undiciFetch,
 }));
@@ -116,6 +123,16 @@ describe('外部地址校验', () => {
     ).rejects.toMatchObject({
       code: 'BAD_URL',
     });
+  });
+
+  it('为固定地址连接禁用自动协议族选择', async () => {
+    lookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+    undiciFetch.mockResolvedValueOnce(new Response('ok', { status: 200 }));
+
+    const response = await fetchExternal('https://music.example.test/', {}, ['music.example.test']);
+    await response.text();
+
+    expect(clients.at(-1)?.options.connect?.autoSelectFamily).toBe(false);
   });
 
   it('在响应体读取完成、取消或请求失败后关闭固定连接客户端', async () => {

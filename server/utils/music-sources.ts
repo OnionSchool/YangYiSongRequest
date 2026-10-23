@@ -45,6 +45,7 @@ export class SourceError extends Error {
 
 const TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 20;
+const METING_SEARCH_LIMIT = 60;
 const SEARCH_CACHE_TTL_MS = 60 * 60_000;
 const SEARCH_CACHE_MAX_ENTRIES = 400;
 const SIGNED_AUDIO_URL_MAX_ENTRIES = SEARCH_CACHE_MAX_ENTRIES * PAGE_SIZE;
@@ -156,6 +157,43 @@ function parseCapabilities(value: string | null | undefined): MetingCapability[]
   return [...METING_CAPABILITIES];
 }
 
+function parsePlatforms(value: string): SourceId[] {
+  try {
+    const platforms = JSON.parse(value) as unknown;
+    if (Array.isArray(platforms)) {
+      return platforms.filter(
+        (platform): platform is SourceId =>
+          typeof platform === 'string' && ['netease', 'qq', 'kugou'].includes(platform)
+      );
+    }
+  } catch {
+    // Ignore malformed persisted configuration rather than breaking all source requests.
+  }
+  return [];
+}
+
+function parseMetingApiRow(row: {
+  id: string;
+  name: string;
+  baseUrl: string;
+  platforms: string;
+  capabilities: string | null;
+  enabled: number;
+  sortOrder: number;
+  authToken: string | null;
+}): MetingApiWithAuth {
+  return {
+    id: row.id,
+    name: row.name,
+    baseUrl: row.baseUrl,
+    platforms: parsePlatforms(row.platforms),
+    capabilities: parseCapabilities(row.capabilities),
+    enabled: row.enabled === 1,
+    sortOrder: row.sortOrder,
+    authToken: row.authToken,
+  };
+}
+
 /** Read enabled Meting APIs for a platform and capability, ordered by priority. */
 async function getApisForSource(
   source: SourceId,
@@ -168,16 +206,7 @@ async function getApisForSource(
     .orderBy(asc(metingApi.sortOrder), asc(metingApi.createdAt));
 
   return rows
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      baseUrl: row.baseUrl,
-      platforms: JSON.parse(row.platforms) as SourceId[],
-      capabilities: parseCapabilities(row.capabilities),
-      enabled: true,
-      sortOrder: row.sortOrder,
-      authToken: row.authToken,
-    }))
+    .map((row) => parseMetingApiRow(row))
     .filter((api) => api.platforms.includes(source) && api.capabilities.includes(capability));
 }
 
@@ -188,16 +217,10 @@ export async function listMetingApis(): Promise<MetingApiConfig[]> {
     .from(metingApi)
     .orderBy(asc(metingApi.sortOrder), asc(metingApi.createdAt));
 
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    baseUrl: row.baseUrl,
-    platforms: JSON.parse(row.platforms) as SourceId[],
-    capabilities: parseCapabilities(row.capabilities),
-    enabled: row.enabled === 1,
-    sortOrder: row.sortOrder,
-    authConfigured: Boolean(row.authToken),
-  }));
+  return rows.map((row) => {
+    const { authToken, ...api } = parseMetingApiRow(row);
+    return { ...api, authConfigured: Boolean(authToken) };
+  });
 }
 
 // ── Meting HTTP ─────────────────────────────────────────────────────
@@ -209,8 +232,12 @@ function toMetingServer(source: SourceId): string {
 }
 
 function metingApiAddress(value: string): string {
-  const url = new URL(value);
-  return `${url.origin}${url.pathname}`;
+  try {
+    const url = new URL(value);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return value;
+  }
 }
 
 interface MetingSong {
@@ -284,7 +311,12 @@ function metingRequestUrl(
   source: SourceId,
   params: Record<string, string>
 ): string {
-  const url = new URL(api.baseUrl);
+  let url: URL;
+  try {
+    url = new URL(api.baseUrl);
+  } catch {
+    throw new SourceError(source, 'Meting API 地址无效', api.baseUrl);
+  }
   const server = toMetingServer(source);
   url.searchParams.set('server', server);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
@@ -511,6 +543,8 @@ async function loadSearchSongs(
   const songs = await metingFetch<MetingSong[]>(source, 'search', {
     type: 'search',
     id: keyword,
+    limit: String(METING_SEARCH_LIMIT),
+    page: '1',
   });
 
   const validSongs = songs.filter((song) => Boolean(platformId(song)));
@@ -533,7 +567,7 @@ async function loadSearchSongs(
         title: song.name ?? song.title ?? '',
         artist: formatArtist(song.artist, song.author),
         album: song.album || undefined,
-        durationMs: durationMsFromSong(song) ?? (await detectAudioDurationMs(source, id, song.url)),
+        durationMs: durationMsFromSong(song) ?? 0,
         coverUrl: songCoverUrl(source, song),
         vip: false,
       };

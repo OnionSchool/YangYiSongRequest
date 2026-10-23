@@ -168,8 +168,9 @@ async function fetchValidatedExternal(
 ): Promise<Response> {
   const dispatcher: Dispatcher = new Client(validated.url.origin, {
     connect: {
+      autoSelectFamily: false,
       lookup: (_hostname, _options, callback) =>
-        callback(null, validated.address, validated.family),
+        callback(null, validated.address, validated.family === 6 ? 6 : 4),
     },
   });
   let closed = false;
