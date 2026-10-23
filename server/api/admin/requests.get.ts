@@ -9,7 +9,9 @@ export default defineEventHandler(async (event) => {
   const url = getRequestURL(event);
   return listAdminRequests({
     status: url.searchParams.get('status') || undefined,
-    date: url.searchParams.get('date') || undefined,
+    createdFrom: url.searchParams.get('createdFrom') || undefined,
+    createdTo: url.searchParams.get('createdTo') || undefined,
+    playDate: url.searchParams.get('playDate') || undefined,
     page: Number(url.searchParams.get('page')) || 1,
   });
 });

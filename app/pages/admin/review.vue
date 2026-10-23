@@ -19,6 +19,10 @@ const items = ref<AdminRequest[]>([]);
 const total = ref(0);
 const page = ref(1);
 const statusFilter = ref('PENDING');
+const showAdvancedFilters = ref(false);
+const createdFrom = ref('');
+const createdTo = ref('');
+const playDate = ref('');
 const loading = ref(false);
 const error = ref<string | null>(null);
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / 20)));
@@ -43,7 +47,13 @@ async function load(nextPage = page.value) {
   loading.value = true;
   error.value = null;
   try {
-    const res = await listRequests({ status: statusFilter.value, page: nextPage });
+    const res = await listRequests({
+      status: statusFilter.value,
+      createdFrom: createdFrom.value || undefined,
+      createdTo: createdTo.value || undefined,
+      playDate: playDate.value || undefined,
+      page: nextPage,
+    });
     items.value = res.items;
     total.value = res.total;
     page.value = nextPage;
@@ -57,7 +67,20 @@ async function load(nextPage = page.value) {
 function filterBy(status: string) {
   statusFilter.value = status;
   page.value = 1;
-  load();
+  void load();
+}
+
+function applyAdvancedFilters() {
+  page.value = 1;
+  void load(1);
+}
+
+function clearAdvancedFilters() {
+  createdFrom.value = '';
+  createdTo.value = '';
+  playDate.value = '';
+  page.value = 1;
+  void load(1);
 }
 
 async function doReject() {
@@ -193,6 +216,81 @@ onMounted(load);
       >
         {{ s.label }}
       </button>
+    </div>
+
+    <div class="mb-5">
+      <button
+        type="button"
+        class="flex items-center gap-2 text-sm font-medium text-ink-soft transition-colors hover:text-ink"
+        :aria-expanded="showAdvancedFilters"
+        @click="showAdvancedFilters = !showAdvancedFilters"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          :class="{ 'rotate-180': showAdvancedFilters }"
+          class="transition-transform"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+        高级筛选
+        <span
+          v-if="createdFrom || createdTo || playDate"
+          class="rounded-full bg-orange/15 px-2 py-0.5 text-xs text-orange-deep"
+        >
+          已启用
+        </span>
+      </button>
+
+      <div
+        v-if="showAdvancedFilters"
+        class="mt-3 grid gap-3 rounded-lg border border-rule bg-paper-deep/20 p-4 sm:grid-cols-3"
+      >
+        <label class="block">
+          <span class="text-xs text-ink-soft">提交开始日期</span>
+          <input
+            v-model="createdFrom"
+            type="date"
+            class="mt-1.5 w-full rounded-md border border-rule bg-paper px-3 py-2 text-sm"
+          />
+        </label>
+        <label class="block">
+          <span class="text-xs text-ink-soft">提交结束日期</span>
+          <input
+            v-model="createdTo"
+            type="date"
+            class="mt-1.5 w-full rounded-md border border-rule bg-paper px-3 py-2 text-sm"
+          />
+        </label>
+        <label class="block">
+          <span class="text-xs text-ink-soft">排期播出日期</span>
+          <input
+            v-model="playDate"
+            type="date"
+            class="mt-1.5 w-full rounded-md border border-rule bg-paper px-3 py-2 text-sm"
+          />
+        </label>
+        <div class="flex items-end gap-2 sm:col-span-3">
+          <button type="button" class="btn-primary px-4 py-2 text-sm" @click="applyAdvancedFilters">
+            应用筛选
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-rule px-4 py-2 text-sm text-ink-soft transition-colors hover:border-ink-faint hover:text-ink"
+            :disabled="!createdFrom && !createdTo && !playDate"
+            @click="clearAdvancedFilters"
+          >
+            清除条件
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Error -->

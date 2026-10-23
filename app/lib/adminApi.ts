@@ -110,10 +110,20 @@ export const adminMe = () => apiFetch<AdminMe | null>('/api/admin/me');
 export const changePassword = (current: string, next: string) =>
   post<{ ok: true }>('/api/admin/password', { current, next });
 
-export const listRequests = (params: { status?: string; date?: string; page?: number }) => {
+export interface AdminRequestFilters {
+  status?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  playDate?: string;
+  page?: number;
+}
+
+export const listRequests = (params: AdminRequestFilters = {}) => {
   const query = new URLSearchParams();
   if (params.status) query.set('status', params.status);
-  if (params.date) query.set('date', params.date);
+  if (params.createdFrom) query.set('createdFrom', params.createdFrom);
+  if (params.createdTo) query.set('createdTo', params.createdTo);
+  if (params.playDate) query.set('playDate', params.playDate);
   if (params.page) query.set('page', String(params.page));
   return apiFetch<{ total: number; page: number; items: AdminRequest[] }>(
     `/api/admin/requests?${query}`

@@ -18,6 +18,9 @@ const PAGE_SIZE = 20;
 export interface ListParams {
   status?: string;
   date?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  playDate?: string;
   page?: number;
 }
 
@@ -26,20 +29,37 @@ export async function listAdminRequests(params: ListParams) {
   const offset = (page - 1) * PAGE_SIZE;
 
   const conditions: any[] = [];
+  const groupKey = sql`COALESCE(${songRequest.groupId}, ${songRequest.id})`;
   if (params.status) {
     conditions.push(eq(songRequest.status, params.status));
   }
-  if (params.date) {
-    if (!isValidDate(params.date)) throw badRequest('BAD_DATE', '日期格式无效');
-    // Filter by date: createdAt >= dayStart AND createdAt < dayEnd
-    const dayStart = Math.floor(new Date(params.date + 'T00:00:00+08:00').getTime() / 1000);
-    const dayEnd = dayStart + 86400;
+  const createdFrom = params.createdFrom ?? params.date;
+  if (createdFrom) {
+    if (!isValidDate(createdFrom)) throw badRequest('BAD_DATE', '开始日期格式无效');
+    const dayStart = Math.floor(new Date(`${createdFrom}T00:00:00+08:00`).getTime() / 1000);
     conditions.push(gte(songRequest.createdAt, dayStart));
+  }
+  if (params.createdTo) {
+    if (!isValidDate(params.createdTo)) throw badRequest('BAD_DATE', '结束日期格式无效');
+    if (createdFrom && params.createdTo < createdFrom) {
+      throw badRequest('BAD_DATE_RANGE', '结束日期不能早于开始日期');
+    }
+    const dayEnd =
+      Math.floor(new Date(`${params.createdTo}T00:00:00+08:00`).getTime() / 1000) + 86400;
     conditions.push(sql`${songRequest.createdAt} < ${dayEnd}`);
+  }
+  if (params.playDate) {
+    if (!isValidDate(params.playDate)) throw badRequest('BAD_DATE', '排期日期格式无效');
+    conditions.push(sql`EXISTS (
+      SELECT 1
+      FROM "Schedule" AS "scheduled"
+      JOIN "SongRequest" AS "scheduledRequest" ON "scheduledRequest"."id" = "scheduled"."requestId"
+      WHERE "scheduled"."playDate" = ${params.playDate}
+        AND COALESCE("scheduledRequest"."groupId", "scheduledRequest"."id") = ${groupKey}
+    )`);
   }
 
   const recentPlaybackSince = Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60;
-  const groupKey = sql`COALESCE(${songRequest.groupId}, ${songRequest.id})`;
   const activeGroup = sql`EXISTS (SELECT 1 FROM "SongRequest" AS "member" WHERE "member"."groupId" = ${songRequest.groupId} AND ("member"."status" = 'PENDING' OR ("member"."status" = 'SCHEDULED' AND "member"."playbackStatus" != 'PLAYED')))`;
   if (!params.status) {
     conditions.push(activeGroup);
