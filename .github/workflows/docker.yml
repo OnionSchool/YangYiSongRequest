@@ -4,9 +4,33 @@ on:
   push:
     branches: [main]
     tags: ['v*']
+    paths:
+      - 'app/**'
+      - 'server/**'
+      - 'public/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'nuxt.config.ts'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/docker.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'app/**'
+      - 'server/**'
+      - 'public/**'
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'nuxt.config.ts'
+      - 'package.json'
+      - 'bun.lock'
+      - '.github/workflows/docker.yml'
   workflow_dispatch:
+
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io
@@ -67,8 +91,8 @@ jobs:
               format('type=image,name={0}/{1},push-by-digest=true,name-canonical=true,push=true',
               env.REGISTRY, steps.image.outputs.name) || '' }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=docker-${{ matrix.architecture }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.architecture }}
 
       - name: Export image digest
         if: github.event_name != 'pull_request'
@@ -132,6 +156,8 @@ jobs:
           )
           image="${{ env.REGISTRY }}/${{ steps.image.outputs.name }}"
           readarray -t digests < <(
-            printf '%s@sha256:%s\n' "$image" ./*
+            for digest_file in ./*; do
+              printf '%s@sha256:%s\n' "$image" "${digest_file##*/}"
+            done
           )
           docker buildx imagetools create "${tags[@]}" "${digests[@]}"

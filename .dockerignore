@@ -13,11 +13,15 @@ data
 .env
 .env.*
 
-# Git & IDE
+# Git, editor, and agent instructions
 .git
 .gitignore
+.github
 .idea
 .vscode
+AGENTS.md
+PLAN.md
+plan
 
 # Docs & tests
 docs
@@ -25,6 +29,9 @@ docs
 !README.md
 tests
 e2e
+coverage
+playwright-report
+test-results
 
 # Misc
 .DS_Store

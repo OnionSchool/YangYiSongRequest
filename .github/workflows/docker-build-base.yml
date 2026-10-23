@@ -1,0 +1,109 @@
+name: Build Docker Base Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile.build-base'
+      - '.github/workflows/docker-build-base.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: docker-build-base-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: onionschool/yangyisongrequest-build-base
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            architecture: amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            architecture: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build base image
+        id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.build-base
+          platforms: ${{ matrix.platform }}
+          outputs: >-
+            type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},
+            push-by-digest=true,name-canonical=true,push=true
+          cache-from: >-
+            type=gha,scope=docker-build-base-${{ matrix.architecture }}
+          cache-to: >-
+            type=gha,mode=max,scope=docker-build-base-${{ matrix.architecture }}
+
+      - name: Export image digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload image digest
+        uses: actions/upload-artifact@v5
+        with:
+          name: base-digest-${{ matrix.architecture }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Download image digests
+        uses: actions/download-artifact@v5
+        with:
+          pattern: base-digest-*
+          merge-multiple: true
+          path: /tmp/digests
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create multi-platform manifest
+        working-directory: /tmp/digests
+        run: |
+          image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          readarray -t digests < <(
+            for digest_file in ./*; do
+              printf '%s@sha256:%s\n' "$image" "${digest_file##*/}"
+            done
+          )
+          docker buildx imagetools create \
+            -t "$image:1.3.13" \
+            -t "$image:sha-${{ github.sha }}" \
+            "${digests[@]}"
