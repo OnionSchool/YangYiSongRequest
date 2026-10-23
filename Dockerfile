@@ -18,7 +18,9 @@ RUN bun run build
 
 FROM node:24-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production
+ARG BUILD_VERSION=dev
+ENV NODE_ENV=production \
+  BUILD_VERSION=$BUILD_VERSION
 
 # ffprobe is required to detect audio duration from externally resolved Meting URLs.
 RUN apk add --no-cache ffmpeg \

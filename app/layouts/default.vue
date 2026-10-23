@@ -65,7 +65,7 @@ onMounted(() => {
           >
             关于
           </button>
-          <p v-if="clock.version" class="eyebrow">v{{ clock.version }}</p>
+          <p v-if="clock.version" class="eyebrow">构建 {{ clock.version }}</p>
         </div>
       </div>
     </footer>
