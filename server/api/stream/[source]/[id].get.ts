@@ -77,6 +77,7 @@ export default defineEventHandler(async (event) => {
       [new URL(audioUrl).hostname]
     );
     if (!response.ok || !response.body) {
+      await response.body?.cancel();
       throw createError({ statusCode: 502, statusMessage: 'Audio fetch failed' });
     }
 

@@ -125,7 +125,7 @@ export const scheduleRequest = (
   id: string,
   playDate: string,
   slotId: string,
-  expectedVersion?: number
+  expectedVersion: number
 ) =>
   post<{ orderNo: number; version: number; durationIncomplete: boolean }>(
     `/api/admin/requests/${id}/schedule`,
@@ -135,16 +135,10 @@ export const scheduleRequest = (
 export const rejectRequest = (id: string, reason: string) =>
   post<{ ok: true }>(`/api/admin/requests/${id}/reject`, { reason });
 
-export const unscheduleRequest = (id: string, expectedVersion?: number) =>
+export const unscheduleRequest = (id: string, expectedVersion: number) =>
   post<{ ok: true; version: number }>(`/api/admin/requests/${id}/unschedule`, { expectedVersion });
 
-export const batchRequests = (body: {
-  ids: string[];
-  action: 'schedule' | 'reject';
-  playDate?: string;
-  slotId?: string;
-  reason?: string;
-}) =>
+export const batchRequests = (body: { ids: string[]; action: 'reject'; reason?: string }) =>
   post<{ done: number; failed: Array<{ id: string; message: string }> }>(
     '/api/admin/requests/batch',
     body
@@ -154,7 +148,7 @@ export const reorderSlot = (
   playDate: string,
   slotId: string,
   orderedIds: string[],
-  expectedVersion?: number
+  expectedVersion: number
 ) =>
   post<{ ok: true; version: number }>('/api/admin/schedule/reorder', {
     playDate,
@@ -169,12 +163,8 @@ export const updatePlaybackStatus = (id: string, status: AdminScheduleSong['play
     { method: 'PUT', body: JSON.stringify({ status }) }
   );
 
-export const manualAdd = (body: {
-  source: SourceId;
-  platformId: string;
-  playDate?: string;
-  slotId?: string;
-}) => post<{ id: string; queryCode: string }>('/api/admin/requests/manual', body);
+export const manualAdd = (body: { source: SourceId; platformId: string }) =>
+  post<{ id: string; queryCode: string }>('/api/admin/requests/manual', body);
 
 export interface AuditFilters {
   page?: number;

@@ -1,11 +1,11 @@
 import { defineEventHandler, setHeader } from 'h3';
 import { readSite } from '../../../utils/site';
-import { requireAuth } from '../../../utils/admin-auth';
+import { requireSuper } from '../../../utils/admin-auth';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'private, no-store');
 
-  requireAuth(event);
+  requireSuper(event);
 
   const site = await readSite();
 

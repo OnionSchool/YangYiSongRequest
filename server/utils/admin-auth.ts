@@ -5,6 +5,7 @@ import type { AdminSession } from './auth';
 import { setAuditContext } from './audit';
 import { getClientIp } from './request-ip';
 import { resolveAdminPermissions, type AdminPermission } from './domain';
+import { readOnboardingRequirements } from './site';
 
 export const isDebugMode = () =>
   process.env.NODE_ENV !== 'production' && process.env.DEBUG_MODE === 'true';
@@ -37,6 +38,20 @@ export function requirePermission(event: H3Event, permission: AdminPermission): 
  * Extract and verify admin session from cookie. Throws 401 if not logged in.
  * In debug mode (DEBUG_MODE=true), returns a fake SUPER session without authentication.
  */
+function isOnboardingPath(path: string): boolean {
+  return (
+    path === '/api/admin/me' ||
+    path === '/api/admin/logout' ||
+    path === '/api/admin/password' ||
+    path === '/api/admin/email/send-code' ||
+    path === '/api/admin/email/verify'
+  );
+}
+
+/**
+ * Extract and verify admin session from cookie. Throws 401 if not logged in.
+ * In debug mode (DEBUG_MODE=true), returns a fake SUPER session without authentication.
+ */
 export function requireAuth(event: H3Event): AdminSession {
   setAuditContext({
     ip: getClientIp(event),
@@ -55,6 +70,23 @@ export function requireAuth(event: H3Event): AdminSession {
       statusMessage: 'Unauthorized',
       message: '会话已过期，请重新登录',
     });
+  }
+  if (!isOnboardingPath(event.path)) {
+    const requirements = readOnboardingRequirements();
+    if (requirements.forceChangePassword && session.mustChangePassword) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Forbidden',
+        message: '请先修改初始密码',
+      });
+    }
+    if (requirements.requireEmailBind && !session.emailVerified) {
+      throw createError({
+        statusCode: 403,
+        statusMessage: 'Forbidden',
+        message: '请先绑定并验证邮箱',
+      });
+    }
   }
   const permission = permissionForPath(event.path);
   if (permission && session.role !== 'SUPER' && !session.permissions.includes(permission)) {

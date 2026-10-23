@@ -42,10 +42,12 @@ export default defineEventHandler(async (event) => {
     const imageHost = new URL(imageUrl).hostname;
     const imageRes = await fetchExternal(imageUrl, { signal: controller.signal }, [imageHost]);
     if (!imageRes.ok || !imageRes.body) {
+      await imageRes.body?.cancel();
       throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
     }
     const contentLength = Number(imageRes.headers.get('content-length'));
     if (Number.isFinite(contentLength) && contentLength > MAX_IMAGE_BYTES) {
+      await imageRes.body.cancel();
       throw createError({ statusCode: 502, statusMessage: 'Image fetch failed' });
     }
     const reader = imageRes.body.getReader();

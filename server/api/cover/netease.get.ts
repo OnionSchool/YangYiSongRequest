@@ -1,4 +1,5 @@
 import { createError, defineEventHandler, getQuery, setHeader } from 'h3';
+import { fetchExternal } from '../../utils/external-url';
 
 export default defineEventHandler(async (event) => {
   const url = getQuery(event).url;
@@ -16,8 +17,11 @@ export default defineEventHandler(async (event) => {
     throw createError({ statusCode: 400, statusMessage: 'Bad Request' });
   }
 
-  const response = await fetch(target, { headers: { referer: 'https://music.163.com/' } });
+  const response = await fetchExternal(target, { headers: { referer: 'https://music.163.com/' } }, [
+    target.hostname,
+  ]);
   if (!response.ok || !response.body) {
+    await response.body?.cancel();
     throw createError({ statusCode: 502, statusMessage: 'Bad Gateway' });
   }
 

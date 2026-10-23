@@ -32,9 +32,11 @@ const rejecting = ref(false);
 const scheduleTarget = ref<AdminRequest | null>(null);
 const scheduleDate = ref(isoDate(new Date()));
 const scheduleSlotId = ref('');
+const scheduleVersion = ref(0);
 const scheduleSlots = ref<AdminDaySlot[]>([]);
 const scheduling = ref(false);
 const scheduleLoading = ref(false);
+const scheduleRequestId = ref(0);
 const unschedulingId = ref<string | null>(null);
 
 async function load(nextPage = page.value) {
@@ -74,22 +76,31 @@ async function doReject() {
 }
 
 async function loadScheduleSlots() {
+  const requestedDate = scheduleDate.value;
+  const requestId = ++scheduleRequestId.value;
   scheduleLoading.value = true;
+  scheduleSlots.value = [];
+  scheduleSlotId.value = '';
+  scheduleVersion.value = 0;
   try {
-    const day = await readDay(scheduleDate.value);
+    const day = await readDay(requestedDate);
+    if (requestId !== scheduleRequestId.value || requestedDate !== scheduleDate.value) return;
     scheduleSlots.value = day.slots;
-    scheduleSlotId.value = scheduleSlots.value[0]?.slotId ?? '';
+    scheduleVersion.value = day.version;
+    scheduleSlotId.value = day.slots[0]?.slotId ?? '';
   } catch (e: any) {
-    error.value = e.message ?? '加载播出时段失败';
+    if (requestId === scheduleRequestId.value) error.value = e.message ?? '加载播出时段失败';
   } finally {
-    scheduleLoading.value = false;
+    if (requestId === scheduleRequestId.value) scheduleLoading.value = false;
   }
 }
 
 function openSchedule(item: AdminRequest) {
+  scheduleRequestId.value += 1;
   scheduleTarget.value = item;
   scheduleDate.value = isoDate(new Date());
   scheduleSlotId.value = '';
+  scheduleVersion.value = 0;
   void loadScheduleSlots();
 }
 
@@ -97,7 +108,12 @@ async function doSchedule() {
   if (!scheduleTarget.value || !scheduleSlotId.value) return;
   scheduling.value = true;
   try {
-    await scheduleRequest(scheduleTarget.value.id, scheduleDate.value, scheduleSlotId.value);
+    await scheduleRequest(
+      scheduleTarget.value.id,
+      scheduleDate.value,
+      scheduleSlotId.value,
+      scheduleVersion.value
+    );
     scheduleTarget.value = null;
     await load();
   } catch (e: any) {
@@ -109,9 +125,11 @@ async function doSchedule() {
 
 async function doUnschedule(item: AdminRequest) {
   if (!confirm(`确定撤回「${item.title}」的排期？歌曲会回到待审核列表。`)) return;
+  if (!item.schedule) return;
   unschedulingId.value = item.id;
   try {
-    await unscheduleRequest(item.id);
+    const day = await readDay(item.schedule.playDate);
+    await unscheduleRequest(item.id, day.version);
     await load();
   } catch (e: any) {
     error.value = e.message ?? '撤回排期失败';
@@ -469,7 +487,7 @@ onMounted(load);
               </button>
               <button
                 class="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-                :disabled="scheduling || !scheduleSlotId"
+                :disabled="scheduling || scheduleLoading || !scheduleSlotId"
                 @click="doSchedule"
               >
                 {{ scheduling ? '排期中…' : '确认通过' }}

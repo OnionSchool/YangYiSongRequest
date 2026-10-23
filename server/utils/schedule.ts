@@ -101,6 +101,9 @@ export async function validateSchedulableDate(date: string): Promise<void> {
     throw badRequest('DATE_TOO_FAR', '超出允许排期天数');
   }
   const calendar = await db.select().from(calendarDay).where(eq(calendarDay.date, date)).limit(1);
+  if (calendar[0]?.kind !== 'SCHOOL' && (weekday(date) === 0 || weekday(date) === 6)) {
+    throw badRequest('DATE_UNAVAILABLE', '周末默认不播出');
+  }
   if (calendar[0] && calendar[0].kind !== 'SCHOOL') {
     throw badRequest('DATE_UNAVAILABLE', '该日期不可播出');
   }
@@ -143,12 +146,12 @@ export async function validateSlotCapacity(
   };
 }
 
-export function updateScheduleVersion(date: string, expectedVersion: number | undefined): number {
+export function updateScheduleVersion(date: string, expectedVersion: number): number {
   const existing = sqlite
     .prepare('SELECT "version" FROM "ScheduleDay" WHERE "date" = ?')
     .get(date) as { version: number } | undefined;
   const current = existing?.version ?? 0;
-  if (expectedVersion !== undefined && expectedVersion !== current) {
+  if (expectedVersion !== current) {
     throw conflict('SCHEDULE_VERSION_CONFLICT', '节目单已被其他人修改，请刷新后重试');
   }
   const next = current + 1;

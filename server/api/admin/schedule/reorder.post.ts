@@ -17,7 +17,10 @@ export default defineEventHandler(async (event) => {
     typeof body.playDate !== 'string' ||
     typeof body.slotId !== 'string' ||
     !Array.isArray(body.orderedIds) ||
-    !body.orderedIds.every((id) => typeof id === 'string')
+    !body.orderedIds.every((id) => typeof id === 'string') ||
+    typeof body.expectedVersion !== 'number' ||
+    !Number.isSafeInteger(body.expectedVersion) ||
+    body.expectedVersion < 0
   ) {
     throw createError({ statusCode: 400, message: '调序参数无效' });
   }
@@ -36,10 +39,7 @@ export default defineEventHandler(async (event) => {
     ) {
       throw createError({ statusCode: 400, message: '调序列表与当前节目单不一致' });
     }
-    const nextVersion = updateScheduleVersion(
-      playDate,
-      typeof body.expectedVersion === 'number' ? body.expectedVersion : undefined
-    );
+    const nextVersion = updateScheduleVersion(playDate, body.expectedVersion);
     const update = sqlite.prepare(
       'UPDATE "Schedule" SET "orderNo" = ? WHERE "requestId" = ? AND "playDate" = ? AND "slotId" = ?'
     );

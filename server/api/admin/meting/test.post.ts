@@ -94,6 +94,7 @@ export default defineEventHandler(async (event) => {
               const authResponse = await fetchExternal(authUrl, { signal: controller.signal }, [
                 host,
               ]);
+              await authResponse.body?.cancel();
               if (!authResponse.ok) {
                 return { source, ok: false, detail: `鉴权请求 HTTP ${authResponse.status}` };
               }

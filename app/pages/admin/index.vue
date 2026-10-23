@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, ref, onMounted } from 'vue';
 import { useAdmin } from '~/stores/admin';
 import { listRequests } from '~/lib/adminApi';
 import { isoDate } from '~/lib/time';
@@ -11,19 +11,20 @@ const admin = useAdmin();
 const pendingCount = ref(0);
 const todayCount = ref(0);
 const loading = ref(true);
+const canReview = computed(() => admin.can('requests.review'));
+const canReadSchedule = computed(() => admin.can('schedule.read'));
+const canManageSources = computed(() => admin.can('sources.manage'));
 
 async function load() {
   loading.value = true;
   try {
     const today = isoDate(new Date());
     const [pending, todayRes] = await Promise.all([
-      listRequests({ status: 'PENDING', page: 1 }),
-      listRequests({ date: today, page: 1 }),
+      canReview.value ? listRequests({ status: 'PENDING', page: 1 }) : null,
+      canReview.value ? listRequests({ date: today, page: 1 }) : null,
     ]);
-    pendingCount.value = pending.total;
-    todayCount.value = todayRes.total;
-  } catch {
-    // ignore
+    pendingCount.value = pending?.total ?? 0;
+    todayCount.value = todayRes?.total ?? 0;
   } finally {
     loading.value = false;
   }
@@ -56,7 +57,11 @@ onMounted(load);
 
     <!-- Stats cards -->
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-      <NuxtLink to="/admin/review" class="paper-card p-5 hover:border-orange/40 transition group">
+      <NuxtLink
+        v-if="canReview"
+        to="/admin/review"
+        class="paper-card p-5 hover:border-orange/40 transition group"
+      >
         <div class="flex items-center justify-between">
           <span class="text-2xl">📋</span>
           <span
@@ -70,7 +75,11 @@ onMounted(load);
         <p class="text-sm text-ink-soft mt-0.5">待审核点歌</p>
       </NuxtLink>
 
-      <NuxtLink to="/admin/schedule" class="paper-card p-5 hover:border-orange/40 transition group">
+      <NuxtLink
+        v-if="canReadSchedule"
+        to="/admin/schedule"
+        class="paper-card p-5 hover:border-orange/40 transition group"
+      >
         <span class="text-2xl">📅</span>
         <p class="text-2xl font-bold mt-3">{{ loading ? '…' : todayCount }}</p>
         <p class="text-sm text-ink-soft mt-0.5">今日请求</p>
@@ -103,9 +112,9 @@ onMounted(load);
       <div class="flex flex-wrap gap-2">
         <NuxtLink
           v-for="link in [
-            { to: '/admin/review?status=PENDING', label: '处理待审核' },
-            { to: '/admin/schedule', label: '查看今日排期' },
-            { to: '/admin/sources', label: '检测音源' },
+            ...(canReview ? [{ to: '/admin/review?status=PENDING', label: '处理待审核' }] : []),
+            ...(canReadSchedule ? [{ to: '/admin/schedule', label: '查看今日排期' }] : []),
+            ...(canManageSources ? [{ to: '/admin/sources', label: '检测音源' }] : []),
           ]"
           :key="link.to"
           :to="link.to"

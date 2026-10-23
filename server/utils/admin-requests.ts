@@ -114,7 +114,7 @@ export async function scheduleRequest(
   playDate: string,
   slotId: string,
   actorId: string,
-  expectedVersion?: number
+  expectedVersion: number
 ) {
   await validateSchedulableDate(playDate);
   const slot = (await getEffectiveSlots(playDate)).find((item) => item.id === slotId);
@@ -199,7 +199,7 @@ export async function rejectRequest(requestId: string, reason: string, actorId: 
 export async function unscheduleRequest(
   requestId: string,
   actorId: string,
-  expectedVersion?: number
+  expectedVersion: number
 ) {
   const scheduled = await db
     .select()
@@ -208,6 +208,12 @@ export async function unscheduleRequest(
     .limit(1);
   if (!scheduled[0]) throw notFound('SCHEDULE_NOT_FOUND', '找不到排期记录');
   const result = sqlite.transaction(() => {
+    const request = sqlite
+      .prepare('SELECT "playbackStatus" FROM "SongRequest" WHERE "id" = ?')
+      .get(requestId) as { playbackStatus: string } | undefined;
+    if (request?.playbackStatus === 'PLAYED') {
+      throw badRequest('REQUEST_ALREADY_PLAYED', '已播放歌曲不能撤回排期');
+    }
     const version = updateScheduleVersion(scheduled[0].playDate, expectedVersion);
     sqlite.prepare('DELETE FROM "Schedule" WHERE "requestId" = ?').run(requestId);
     sqlite
@@ -228,9 +234,7 @@ export async function unscheduleRequest(
 export async function batchRequests(
   body: {
     ids: string[];
-    action: 'schedule' | 'reject';
-    playDate?: string;
-    slotId?: string;
+    action: 'reject';
     reason?: string;
   },
   actorId: string
@@ -242,13 +246,7 @@ export async function batchRequests(
 
   for (const id of body.ids) {
     try {
-      if (body.action === 'schedule') {
-        if (!body.playDate || !body.slotId)
-          throw badRequest('MISSING_PARAMS', '排期需要 playDate 和 slotId');
-        await scheduleRequest(id, body.playDate, body.slotId, actorId);
-      } else {
-        await rejectRequest(id, body.reason || '批量驳回', actorId);
-      }
+      await rejectRequest(id, body.reason || '批量驳回', actorId);
       results.done++;
     } catch (e: any) {
       results.failed.push({ id, message: e.message ?? String(e) });
@@ -263,6 +261,9 @@ export async function manualAddRequest(
   body: { source: string; platformId: string; playDate?: string; slotId?: string },
   actorId: string
 ) {
+  if (body.playDate || body.slotId) {
+    throw badRequest('SCHEDULE_REQUIRES_VERSION', '排期请在审核页确认节目单版本后进行');
+  }
   const { getSource } = await import('./music-sources');
   const src = getSource(body.source);
   if (!src) throw badRequest('BAD_SOURCE', '无效音源');
@@ -296,13 +297,10 @@ export async function manualAddRequest(
     }
   }
 
-  if (body.playDate && body.slotId) {
-    await scheduleRequest(id, body.playDate, body.slotId, actorId);
-  }
-
   await writeAudit(actorId, 'request.manual', id, {
     source: body.source,
     platformId: body.platformId,
+    scheduled: false,
   });
   return { id, queryCode };
 }

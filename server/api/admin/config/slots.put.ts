@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { defineEventHandler, readBody, setHeader } from 'h3';
 import { requireSuper } from '../../../utils/admin-auth';
-import { db } from '../../../utils/db';
+import { db, sqlite } from '../../../utils/db';
 import { broadcastSlot } from '../../../utils/schema';
 import { invalidateSiteCache } from '../../../utils/site';
 import { writeAudit } from '../../../utils/audit';
@@ -15,69 +15,62 @@ export default defineEventHandler(async (event) => {
   if (!Array.isArray(slots) || !slots.every(isSlot)) {
     throw badRequest('BAD_SLOTS', '时段配置无效');
   }
+  const names = new Set<string>();
+  const ids = new Set<string>();
+  for (const slot of slots) {
+    const name = slot.name.trim();
+    if (names.has(name) || (slot.id && ids.has(slot.id))) {
+      throw badRequest('BAD_SLOTS', '时段名称或标识不能重复');
+    }
+    names.add(name);
+    if (slot.id) ids.add(slot.id);
+  }
 
-  const existing = await db.select({ id: broadcastSlot.id }).from(broadcastSlot);
-  const retainedIds = new Set(
-    slots.map((slot) => slot.id).filter((id): id is string => Boolean(id))
-  );
-  const removedIds = existing.map((slot) => slot.id).filter((id) => !retainedIds.has(id));
-  if (removedIds.length > 0) {
-    const references = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(
-        sql`(
-        SELECT "slotId" FROM "Schedule"
-        UNION ALL SELECT "slotId" FROM "WeeklyScheduleRule"
-        UNION ALL SELECT "slotId" FROM "DateScheduleOverride"
-      )`
-      )
-      .where(
-        sql`"slotId" IN (${sql.join(
-          removedIds.map((id) => sql`${id}`),
-          sql`, `
-        )})`
-      );
-    if (Number(references[0]?.count ?? 0) > 0) {
-      throw badRequest('SLOT_IN_USE', '已有排期或规则引用的时段不能删除，请先停用');
-    }
-  }
-  for (let i = 0; i < slots.length; i++) {
-    const s = slots[i];
-    const id = s.id || `slot_${randomBytes(6).toString('hex')}`;
-    const current = existing.some((slot) => slot.id === id);
-    if (current) {
-      await db
-        .update(broadcastSlot)
-        .set({
-          name: s.name,
-          startTime: s.startTime,
-          endTime: s.endTime,
-          maxCount: s.maxCount ?? null,
-          maxMs: s.maxMs ?? null,
-          sortOrder: i,
-          enabled: s.enabled ? 1 : 0,
-        })
-        .where(sql`"id" = ${id}`);
-    } else {
-      await db.insert(broadcastSlot).values({
-        id,
-        name: s.name,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        maxCount: s.maxCount ?? null,
-        maxMs: s.maxMs ?? null,
-        sortOrder: i,
-        enabled: s.enabled ? 1 : 0,
-      });
-    }
-  }
-  if (removedIds.length > 0)
-    await db.delete(broadcastSlot).where(
-      sql`"id" IN (${sql.join(
-        removedIds.map((id) => sql`${id}`),
-        sql`, `
-      )})`
+  sqlite.transaction(() => {
+    const existing = sqlite.prepare('SELECT "id" FROM "BroadcastSlot"').all() as { id: string }[];
+    const existingIds = new Set(existing.map((slot) => slot.id));
+    const retainedIds = new Set(
+      slots.map((slot) => slot.id).filter((id): id is string => Boolean(id))
     );
+    const removedIds = existing.map((slot) => slot.id).filter((id) => !retainedIds.has(id));
+    if (removedIds.length > 0) {
+      const references = sqlite
+        .prepare(
+          `SELECT COUNT(*) AS "count" FROM (
+            SELECT "slotId" FROM "Schedule"
+            UNION ALL SELECT "slotId" FROM "WeeklyScheduleRule"
+            UNION ALL SELECT "slotId" FROM "DateScheduleOverride"
+          ) WHERE "slotId" IN (SELECT value FROM json_each(?))`
+        )
+        .get(JSON.stringify(removedIds)) as { count: number } | undefined;
+      if ((references?.count ?? 0) > 0) {
+        throw badRequest('SLOT_IN_USE', '已有排期或规则引用的时段不能删除，请先停用');
+      }
+    }
+    const update = sqlite.prepare(
+      'UPDATE "BroadcastSlot" SET "name" = ?, "startTime" = ?, "endTime" = ?, "maxCount" = ?, "maxMs" = ?, "sortOrder" = ?, "enabled" = ? WHERE "id" = ?'
+    );
+    const insert = sqlite.prepare(
+      'INSERT INTO "BroadcastSlot" ("id", "name", "startTime", "endTime", "maxCount", "maxMs", "sortOrder", "enabled") VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    for (let i = 0; i < slots.length; i++) {
+      const slot = slots[i];
+      const id = slot.id || `slot_${randomBytes(6).toString('hex')}`;
+      const values = [
+        slot.name.trim(),
+        slot.startTime,
+        slot.endTime,
+        slot.maxCount ?? null,
+        slot.maxMs ?? null,
+        i,
+        slot.enabled ? 1 : 0,
+      ];
+      if (existingIds.has(id)) update.run(...values, id);
+      else insert.run(id, ...values);
+    }
+    const remove = sqlite.prepare('DELETE FROM "BroadcastSlot" WHERE "id" = ?');
+    for (const id of removedIds) remove.run(id);
+  })();
 
   invalidateSiteCache();
   await writeAudit(session.userId, 'config.slots', null, { count: slots.length });
@@ -89,7 +82,7 @@ export default defineEventHandler(async (event) => {
     .orderBy(sql`sortOrder ASC`);
   return (result as any[]).map((s) => ({
     id: s.id,
-    name: s.name,
+    name: s.name.trim(),
     startTime: s.startTime,
     endTime: s.endTime,
     maxCount: s.maxCount,

@@ -46,6 +46,25 @@ export function invalidateSiteCache(): void {
   cache = null;
 }
 
+/** Read onboarding controls synchronously for the authentication boundary. */
+export function readOnboardingRequirements(): Pick<
+  SiteConfig,
+  'forceChangePassword' | 'requireEmailBind'
+> {
+  const rows = db
+    .select({ key: siteSetting.key, value: siteSetting.value })
+    .from(siteSetting)
+    .all();
+  const values = new Map(rows.map((row) => [row.key, row.value]));
+  return {
+    forceChangePassword: decodeBool(
+      values.get('forceChangePassword'),
+      DEFAULTS.forceChangePassword
+    ),
+    requireEmailBind: decodeBool(values.get('requireEmailBind'), DEFAULTS.requireEmailBind),
+  };
+}
+
 async function load(): Promise<SiteSnapshot> {
   const [rows, slots, grades] = await Promise.all([
     db.select().from(siteSetting),

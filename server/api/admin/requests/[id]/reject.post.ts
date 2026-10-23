@@ -1,4 +1,4 @@
-import { defineEventHandler, getRouterParam, readBody, setHeader } from 'h3';
+import { createError, defineEventHandler, getRouterParam, readBody, setHeader } from 'h3';
 import { requirePlanner } from '../../../../utils/admin-auth';
 import { rejectRequest } from '../../../../utils/admin-requests';
 
@@ -6,6 +6,9 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
   const session = requirePlanner(event);
   const id = getRouterParam(event, 'id')!;
-  const { reason } = await readBody(event);
-  return rejectRequest(id, reason || '', session.userId);
+  const { reason } = await readBody<{ reason?: unknown }>(event);
+  if (reason !== undefined && typeof reason !== 'string') {
+    throw createError({ statusCode: 400, message: '驳回原因无效' });
+  }
+  return rejectRequest(id, reason ?? '', session.userId);
 });

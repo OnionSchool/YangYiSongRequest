@@ -1,5 +1,8 @@
 import { execFile } from 'node:child_process';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { asc, eq } from 'drizzle-orm';
 import { db } from './db';
@@ -306,6 +309,7 @@ async function metingFetchRaw<T>(
   try {
     const response = await fetchExternal(target, { signal: controller.signal });
     if (!response.ok) {
+      await response.body?.cancel();
       throw new SourceError(source, `Meting API 返回 HTTP ${response.status}`, apiUrl);
     }
     const data = (await response.json()) as unknown;
@@ -331,8 +335,9 @@ async function metingRedirect(
   for (const api of apis) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    let response: Response | undefined;
     try {
-      const response = await fetchExternal(metingRequestUrl(api, source, params), {
+      response = await fetchExternal(metingRequestUrl(api, source, params), {
         signal: controller.signal,
         redirect: 'manual',
       });
@@ -382,6 +387,7 @@ async function metingRedirect(
       });
       // Try the next configured API.
     } finally {
+      await response?.body?.cancel().catch(() => undefined);
       clearTimeout(timer);
     }
   }
@@ -462,8 +468,9 @@ function formatArtist(
 }
 
 async function resolveAudioUrl(url: string): Promise<string | null> {
+  let response: Response | undefined;
   try {
-    const response = await fetchExternal(url, { redirect: 'manual' });
+    response = await fetchExternal(url, { redirect: 'manual' });
     const location = response.headers.get('location');
     if (response.status >= 300 && response.status < 400 && location) {
       return await validExternalUrl(new URL(location, response.url).toString());
@@ -472,6 +479,8 @@ async function resolveAudioUrl(url: string): Promise<string | null> {
     return response.ok && contentType.startsWith('audio/') ? response.url : null;
   } catch {
     return null;
+  } finally {
+    await response?.body?.cancel().catch(() => undefined);
   }
 }
 
@@ -629,7 +638,43 @@ export async function detectAudioDurationMs(
     (signedUrl ? await resolveAudioUrl(signedUrl) : null) ??
     (await fetchAudioUrl(source, platformId));
   if (!audioUrl) return 0;
+  const directory = await mkdtemp(join(tmpdir(), 'campus-radio-audio-'));
+  const filePath = join(directory, `${randomBytes(8).toString('hex')}.audio`);
   try {
+    const host = new URL(audioUrl).hostname;
+    const response = await fetchExternal(audioUrl, {}, [host]);
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    const maxBytes = 20 * 1024 * 1024;
+    const contentLength = Number(response.headers.get('content-length'));
+    if (
+      !response.ok ||
+      !response.body ||
+      !contentType.startsWith('audio/') ||
+      (Number.isFinite(contentLength) && contentLength > maxBytes)
+    ) {
+      await response.body?.cancel();
+      return 0;
+    }
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    const reader = response.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.byteLength;
+        if (size > maxBytes) {
+          await reader.cancel();
+          return 0;
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    await writeFile(filePath, Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))), {
+      mode: 0o600,
+    });
     const { stdout } = await ffprobe(
       'ffprobe',
       [
@@ -639,7 +684,7 @@ export async function detectAudioDurationMs(
         'format=duration',
         '-of',
         'default=noprint_wrappers=1:nokey=1',
-        audioUrl,
+        filePath,
       ],
       { timeout: 15_000, maxBuffer: 1_024 }
     );
@@ -648,6 +693,8 @@ export async function detectAudioDurationMs(
   } catch {
     // ffprobe is intentionally optional: scheduling still works without it.
     return 0;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 }
 

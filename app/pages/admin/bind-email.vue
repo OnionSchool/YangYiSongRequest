@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAdmin } from '~/stores/admin';
 import { apiFetch, ApiError } from '~/lib/api';
@@ -21,17 +21,22 @@ let timer: ReturnType<typeof setInterval> | null = null;
 
 const canResend = computed(() => countdown.value === 0 && !busy.value);
 
-function startCountdown() {
-  countdown.value = 60;
+function stopCountdown() {
   if (timer) clearInterval(timer);
+  timer = null;
+  countdown.value = 0;
+}
+
+function startCountdown() {
+  stopCountdown();
+  countdown.value = 60;
   timer = setInterval(() => {
     countdown.value--;
-    if (countdown.value <= 0 && timer) {
-      clearInterval(timer);
-      timer = null;
-    }
+    if (countdown.value <= 0) stopCountdown();
   }, 1000);
 }
+
+onUnmounted(stopCountdown);
 
 async function sendCode() {
   if (busy.value) return;

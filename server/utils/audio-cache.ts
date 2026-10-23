@@ -204,6 +204,7 @@ async function downloadAudio(
       !contentType.startsWith('audio/') ||
       contentLength > MAX_BYTES
     ) {
+      await response.body?.cancel();
       throw badRequest('DOWNLOAD_UNAVAILABLE', '音源未返回可用音频');
     }
     const reader = response.body.getReader();
@@ -213,7 +214,10 @@ async function downloadAudio(
       const { done, value } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > MAX_BYTES) throw badRequest('DOWNLOAD_TOO_LARGE', '音频文件超过大小限制');
+      if (size > MAX_BYTES) {
+        await reader.cancel();
+        throw badRequest('DOWNLOAD_TOO_LARGE', '音频文件超过大小限制');
+      }
       chunks.push(value);
     }
     return { body: Buffer.concat(chunks), mimeType: contentType };
