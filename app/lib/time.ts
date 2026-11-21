@@ -50,6 +50,29 @@ export function shiftDate(date: string, days: number): string {
   return cursor.toISOString().slice(0, 10);
 }
 
+/** 日期字符串取月份键，形如 2026-11 */
+export function monthOf(date: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : isoDate(new Date()).slice(0, 7);
+}
+
+/** 拆月份键。不用 split 解构，省得以后开 noUncheckedIndexedAccess 时到处补 undefined 判断 */
+export function monthParts(month: string): { year: number; monthNo: number } {
+  return { year: Number(month.slice(0, 4)), monthNo: Number(month.slice(5, 7)) };
+}
+
+/** 月份键加减月份，跨年交给 Date 进位 */
+export function shiftMonth(month: string, delta: number): string {
+  const { year, monthNo } = monthParts(month);
+  const cursor = new Date(Date.UTC(year, monthNo - 1 + delta, 1));
+  return `${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+/** 月份键里有多少天 */
+export function daysInMonth(month: string): number {
+  const { year, monthNo } = monthParts(month);
+  return new Date(Date.UTC(year, monthNo, 0)).getUTCDate();
+}
+
 /** 相对今天的口语说法，播出单卡片的标签用它 */
 export function relativeDayLabel(date: string, today: string): string {
   const diff = Math.round(

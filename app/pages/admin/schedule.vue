@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
+import MonthCalendar from '~/components/MonthCalendar.vue';
+import { useMonthMarks } from '~/composables/useMonthMarks';
 import {
   readDay,
   unscheduleRequest,
@@ -10,7 +12,7 @@ import {
   type AdminDaySlot,
 } from '~/lib/adminApi';
 import { useAdmin } from '~/stores/admin';
-import { isoDate, shiftDate } from '~/lib/time';
+import { isoDate, monthOf, shiftDate } from '~/lib/time';
 import {
   readDownloadPreference,
   saveDownloadPreference,
@@ -21,6 +23,13 @@ definePageMeta({ layout: 'admin' });
 
 const today = isoDate(new Date());
 const selectedDate = ref(today);
+const calendarOpen = ref(false);
+const calendarMonth = ref(monthOf(selectedDate.value));
+const {
+  marks: calendarMarks,
+  loading: calendarLoading,
+  load: loadCalendarMarks,
+} = useMonthMarks(calendarMonth);
 const slots = ref<AdminDaySlot[]>([]);
 const version = ref(0);
 const loading = ref(false);
@@ -233,6 +242,24 @@ function nextDay() {
   void load();
 }
 
+function toggleCalendar() {
+  calendarOpen.value = !calendarOpen.value;
+  if (calendarOpen.value) void loadCalendarMarks();
+}
+
+/** 日历选一天：关掉弹层、切日期，随后按新日期重拉排期 */
+function pickDate(date: string) {
+  calendarOpen.value = false;
+  if (date === selectedDate.value) return;
+  selectedDate.value = date;
+  void load();
+}
+
+// 前后一天跨月、手改输入框都同步月历月份，别留在上个月
+watch(selectedDate, (date) => {
+  calendarMonth.value = monthOf(date);
+});
+
 function formatDuration(ms: number) {
   const sec = Math.round(ms / 1000);
   const m = Math.floor(sec / 60);
@@ -344,6 +371,44 @@ onMounted(async () => {
           @change="void load()"
         />
         <span class="text-xs text-ink-faint">{{ dateLabel(selectedDate) }}</span>
+      </div>
+      <div class="relative">
+        <button
+          type="button"
+          class="rounded-lg border px-3 py-2 text-xs transition-colors"
+          :class="
+            calendarOpen
+              ? 'border-orange text-ink'
+              : 'border-rule text-ink-soft hover:border-ink-faint'
+          "
+          :aria-expanded="calendarOpen"
+          aria-controls="schedule-calendar"
+          @click="toggleCalendar"
+        >
+          日历
+        </button>
+        <div
+          v-if="calendarOpen"
+          class="fixed inset-0 z-40"
+          aria-hidden="true"
+          @click="calendarOpen = false"
+        ></div>
+        <div
+          v-if="calendarOpen"
+          id="schedule-calendar"
+          class="paper-card absolute right-0 z-50 mt-2 w-[min(18rem,calc(100vw-2rem))] p-3 max-sm:fixed max-sm:inset-x-4 max-sm:top-24 max-sm:w-auto"
+          @keydown.esc="calendarOpen = false"
+        >
+          <MonthCalendar
+            :month="calendarMonth"
+            :selected="selectedDate"
+            :today="today"
+            :marks="calendarMarks"
+            :loading="calendarLoading"
+            @update:month="calendarMonth = $event"
+            @select="pickDate"
+          />
+        </div>
       </div>
       <button
         class="rounded-lg border border-rule p-2 hover:border-ink-faint transition-colors"

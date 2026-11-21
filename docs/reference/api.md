@@ -43,6 +43,7 @@
 | GET  | `/api/requests/stats`                     | 点歌总数、已通过数与驳回数         |
 | GET  | `/api/playlist/recent`                    | 获取最近节目单                     |
 | GET  | `/api/playlist/date/:date`                | 获取指定日期节目单                 |
+| GET  | `/api/playlist/month/:month`              | 月度日历：每天是否播出与排歌数     |
 | GET  | `/api/health`                             | 健康检查                           |
 
 PoW 挑战有效期为 5 分钟，只能使用一次，且绑定客户端 IP 和提交摘要。每 IP 每小时最多提交 5 次；连续验证失败会触发 15 分钟冷却。

@@ -6,7 +6,7 @@ import { schedule, songRequest } from '../../../utils/schema';
 import { getEffectiveSlots, getScheduleVersion } from '../../../utils/schedule';
 
 function addDuration(time: string, durationMs: number): string {
-  const [hour, minute] = time.split(':').map(Number);
+  const [hour = 0, minute = 0] = time.split(':').map(Number);
   const seconds = hour * 3600 + minute * 60 + Math.floor(durationMs / 1000);
   return `${String(Math.floor(seconds / 3600) % 24).padStart(2, '0')}:${String(
     Math.floor(seconds / 60) % 60

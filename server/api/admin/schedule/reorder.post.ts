@@ -27,6 +27,8 @@ export default defineEventHandler(async (event) => {
   const orderedIds = body.orderedIds as string[];
   const playDate = body.playDate as string;
   const slotId = body.slotId as string;
+  // 收窄结果要落到 const：进到 transaction 的回调里，对 body.xxx 的收窄会失效
+  const expectedVersion = body.expectedVersion;
   const version = sqlite.transaction(() => {
     const current = sqlite
       .prepare(
@@ -39,7 +41,7 @@ export default defineEventHandler(async (event) => {
     ) {
       throw createError({ statusCode: 400, message: '调序列表与当前节目单不一致' });
     }
-    const nextVersion = updateScheduleVersion(playDate, body.expectedVersion);
+    const nextVersion = updateScheduleVersion(playDate, expectedVersion);
     const update = sqlite.prepare(
       'UPDATE "Schedule" SET "orderNo" = ? WHERE "requestId" = ? AND "playDate" = ? AND "slotId" = ?'
     );

@@ -1,14 +1,30 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
+import MonthCalendar from '@/components/MonthCalendar.vue';
 import PlaylistDeck from '@/components/PlaylistDeck.vue';
 import type { DeckDay } from '@/components/PlaylistDeck.vue';
 import RequestSlip from '@/components/RequestSlip.vue';
 import SongRow from '@/components/SongRow.vue';
-import { ApiError, SOURCES, fetchRecentPlaylist, fetchRequestStats, searchSongs } from '@/lib/api';
-import type { PlaylistDay, PlaylistSlot, RequestStats, Song, SourceId } from '@/lib/api';
+import {
+  ApiError,
+  SOURCES,
+  fetchPlaylistDate,
+  fetchPlaylistMonth,
+  fetchRecentPlaylist,
+  fetchRequestStats,
+  searchSongs,
+} from '@/lib/api';
+import type {
+  PlaylistDay,
+  PlaylistMonthDay,
+  PlaylistSlot,
+  RequestStats,
+  Song,
+  SourceId,
+} from '@/lib/api';
 import { activeSlot } from '@/lib/slots';
-import { hhmm, isoDate, relativeDayLabel, shiftDate } from '@/lib/time';
+import { hhmm, isoDate, monthOf, relativeDayLabel, shiftDate } from '@/lib/time';
 import { useServerClock } from '@/stores/clock';
 import { usePlayer } from '@/stores/player';
 import { useSite } from '@/stores/site';
@@ -51,6 +67,17 @@ const activeSlotId = computed(() => activeSlot(site.slots, now.value)?.id ?? nul
 const currentTab = computed(() => tabs[active.value]);
 const searched = computed(() => submitted.value !== '');
 
+/** 日历里手动挑过、但不在「昨天起已排期」列表里的日期，单独存着 */
+const extraDays = ref<PlaylistDay[]>([]);
+/** 播出单当前停在哪一天，日历选中格跟着它走 */
+const focusedDate = ref<string | null>(null);
+const calendarOpen = ref(false);
+const calendarMonth = ref(monthOf(today.value));
+const monthCache = reactive<Record<string, PlaylistMonthDay[] | undefined>>({});
+const pendingMonths = ref(new Set<string>());
+const monthMarks = computed(() => monthCache[calendarMonth.value] ?? []);
+const monthLoading = computed(() => pendingMonths.value.has(calendarMonth.value));
+
 /** 今天与往后的卡片按后台配置铺满时段，有歌的填进去；过去的日期只显示真有歌的时段 */
 function fillSlots(date: string, scheduled: PlaylistSlot[]): PlaylistSlot[] {
   if (date < today.value) return scheduled;
@@ -68,16 +95,22 @@ function fillSlots(date: string, scheduled: PlaylistSlot[]): PlaylistSlot[] {
 }
 
 /** 卡片堆：昨天 + 今天 + 往后所有已排期的日期，默认停在今天 */
+const deckSource = computed(() => {
+  const byDate = new Map<string, PlaylistSlot[]>();
+  for (const day of [...recent.value, ...extraDays.value]) byDate.set(day.date, day.slots);
+  return byDate;
+});
+
 const deckDays = computed<DeckDay[]>(() => {
   const yesterday = shiftDate(today.value, -1);
   const dates = new Set<string>([yesterday, today.value]);
-  for (const day of recent.value) {
-    if (day.date >= yesterday) dates.add(day.date);
+  for (const date of deckSource.value.keys()) {
+    if (date >= yesterday) dates.add(date);
   }
   return [...dates].sort().map((date) => ({
     date,
     relative: relativeDayLabel(date, today.value),
-    slots: fillSlots(date, recent.value.find((day) => day.date === date)?.slots ?? []),
+    slots: fillSlots(date, deckSource.value.get(date) ?? []),
   }));
 });
 
@@ -86,12 +119,51 @@ const todayIndex = computed(() => {
   return found >= 0 ? found : 0;
 });
 
+/** 有选中的日期就停在它那一张，否则停在今天 */
+const startIndex = computed(() => {
+  const date = focusedDate.value;
+  const found = date ? deckDays.value.findIndex((day) => day.date === date) : -1;
+  return found >= 0 ? found : todayIndex.value;
+});
+
+/** 月历标记：成功拿到就缓存，切回来不用再请求；失败不缓存，下次还能重试 */
+async function loadMonth(month: string): Promise<void> {
+  if (monthCache[month] || pendingMonths.value.has(month)) return;
+  pendingMonths.value.add(month);
+  try {
+    monthCache[month] = (await fetchPlaylistMonth(month)).days;
+  } catch {
+    // 拿不到标记不影响选日期，安静地当没有
+  } finally {
+    pendingMonths.value.delete(month);
+  }
+}
+
+function toggleCalendar(): void {
+  calendarOpen.value = !calendarOpen.value;
+  if (calendarOpen.value) void loadMonth(calendarMonth.value);
+}
+
+/** 从日历挑一天：拉回那天的歌单塞进卡片堆，再停过去 */
+async function pickDate(date: string): Promise<void> {
+  calendarOpen.value = false;
+  if (!deckSource.value.has(date)) {
+    const day = await fetchPlaylistDate(date).catch(() => null);
+    if (day && !deckSource.value.has(date)) extraDays.value = [...extraDays.value, day];
+  }
+  focusedDate.value = date;
+}
+
+watch(calendarMonth, (month) => void loadMonth(month));
+
 onMounted(async () => {
   await site.load();
   [recent.value, stats.value] = await Promise.all([
     fetchRecentPlaylist().catch(() => []),
     fetchRequestStats().catch(() => null),
   ]);
+  focusedDate.value = today.value;
+  void loadMonth(calendarMonth.value);
 });
 
 /** 三家各发一次、互不阻塞：一家挂了只影响它自己那个 tab */
@@ -134,12 +206,55 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
 
   <PlaylistDeck
     :days="deckDays"
-    :start-index="todayIndex"
+    :start-index="startIndex"
     :active-slot-id="activeSlotId"
     :live-date="today"
     :now-label="now"
     :preview-enabled="site.guestPreviewOpen"
-  />
+    @focus-date="focusedDate = $event"
+  >
+    <template #toolbar>
+      <div class="relative shrink-0">
+        <button
+          type="button"
+          class="pressable flex items-center gap-1.5 px-2.5 py-1.5 text-sm"
+          :class="calendarOpen ? 'border-orange text-ink' : ''"
+          :aria-expanded="calendarOpen"
+          aria-controls="home-calendar"
+          @click="toggleCalendar"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="h-4 w-4 calendar-icon">
+            <rect x="3" y="4" width="18" height="17" rx="2" />
+            <path d="M8 2v4M16 2v4M3 10h18" />
+          </svg>
+          日历
+        </button>
+        <!-- 点空白处关掉，手机上不用找关闭按钮 -->
+        <div
+          v-if="calendarOpen"
+          class="fixed inset-0 z-30"
+          aria-hidden="true"
+          @click="calendarOpen = false"
+        ></div>
+        <div
+          v-if="calendarOpen"
+          id="home-calendar"
+          class="paper-card absolute right-0 z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] p-3"
+          @keydown.esc="calendarOpen = false"
+        >
+          <MonthCalendar
+            :month="calendarMonth"
+            :selected="focusedDate"
+            :today="today"
+            :marks="monthMarks"
+            :loading="monthLoading"
+            @update:month="calendarMonth = $event"
+            @select="pickDate"
+          />
+        </div>
+      </div>
+    </template>
+  </PlaylistDeck>
 
   <p class="mt-4">
     <RouterLink

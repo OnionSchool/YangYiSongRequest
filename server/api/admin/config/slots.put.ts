@@ -53,8 +53,7 @@ export default defineEventHandler(async (event) => {
     const insert = sqlite.prepare(
       'INSERT INTO "BroadcastSlot" ("id", "name", "startTime", "endTime", "maxCount", "maxMs", "sortOrder", "enabled") VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
-    for (let i = 0; i < slots.length; i++) {
-      const slot = slots[i];
+    for (const [i, slot] of slots.entries()) {
       const id = slot.id || `slot_${randomBytes(6).toString('hex')}`;
       const values = [
         slot.name.trim(),
@@ -129,6 +128,7 @@ function isTime(value: string): boolean {
 }
 
 function toMinutes(value: string): number {
-  const [hour, minute] = value.split(':').map(Number);
+  // 缺省 0：字符串不符合 HH:mm 时也退成 0，不把 undefined 带进计算
+  const [hour = 0, minute = 0] = value.split(':').map(Number);
   return hour * 60 + minute;
 }

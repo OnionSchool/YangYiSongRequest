@@ -320,10 +320,12 @@ function metingRequestUrl(
   const server = toMetingServer(source);
   url.searchParams.set('server', server);
   for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-  if (api.authToken && ['url', 'lrc', 'pic'].includes(params.type)) {
+  // type / id 由调用方限定在 url、lrc、pic 三种取图上，缺任何一个就不加签名
+  const { type, id } = params;
+  if (api.authToken && type && id && ['url', 'lrc', 'pic'].includes(type)) {
     url.searchParams.set(
       'auth',
-      createHmac('sha1', api.authToken).update(`${server}${params.type}${params.id}`).digest('hex')
+      createHmac('sha1', api.authToken).update(`${server}${type}${id}`).digest('hex')
     );
   }
   return url.toString();
@@ -526,7 +528,9 @@ async function mapWithConcurrency<T, R>(
   async function worker(): Promise<void> {
     while (next < values.length) {
       const index = next++;
-      results[index] = await mapper(values[index]);
+      const value = values[index];
+      if (value === undefined) continue;
+      results[index] = await mapper(value);
     }
   }
   await Promise.all(Array.from({ length: Math.min(concurrency, values.length) }, worker));

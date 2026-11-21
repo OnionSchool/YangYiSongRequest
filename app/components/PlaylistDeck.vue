@@ -21,6 +21,9 @@ const props = defineProps<{
   previewEnabled?: boolean;
 }>();
 
+/** 卡片切换了哪一天就说出去，外面的日历才能跟着选中同一格 */
+const emit = defineEmits<{ 'focus-date': [date: string] }>();
+
 /** 拖过这个比例（相对一整格的行程）就翻页，没到就弹回去 */
 const COMMIT_RATIO = 0.28;
 /** 移动超过这么多像素才算拖拽，之后要吞掉那一下 click */
@@ -138,6 +141,12 @@ watch(
   }
 );
 
+// 停靠点变了（翻页、点日期、外面的日历选日）都往上报一次
+watch(index, () => {
+  const date = props.days[index.value]?.date;
+  if (date) emit('focus-date', date);
+});
+
 onMounted(() => {
   observer = new ResizeObserver(readHeights);
   void measure();
@@ -198,18 +207,21 @@ function onClickCapture(event: MouseEvent): void {
 <template>
   <div>
     <!-- 日期条既是导航也是当前位置的指示，光靠堆叠看不出在哪一天 -->
-    <div class="mb-3 flex items-center gap-1.5 overflow-x-auto pb-1">
-      <button
-        v-for="(day, slot) in days"
-        :key="day.date"
-        type="button"
-        class="shrink-0 rounded-badge border px-3 py-1.5 text-sm"
-        :class="slot === index ? 'border-orange bg-orange/15' : 'border-rule text-ink-soft'"
-        :aria-current="slot === index ? 'true' : undefined"
-        @click="jump(slot)"
-      >
-        {{ day.relative }}
-      </button>
+    <div class="mb-3 flex items-center gap-1.5">
+      <div class="flex min-w-0 grow items-center gap-1.5 overflow-x-auto pb-1">
+        <button
+          v-for="(day, slot) in days"
+          :key="day.date"
+          type="button"
+          class="shrink-0 rounded-badge border px-3 py-1.5 text-sm"
+          :class="slot === index ? 'border-orange bg-orange/15' : 'border-rule text-ink-soft'"
+          :aria-current="slot === index ? 'true' : undefined"
+          @click="jump(slot)"
+        >
+          {{ day.relative }}
+        </button>
+      </div>
+      <slot name="toolbar" />
     </div>
 
     <!-- 负边距让两侧露出的卡片边缘能伸进页面留白，overflow-x-clip 兜住不产生横向滚动 -->

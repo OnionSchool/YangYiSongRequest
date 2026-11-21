@@ -257,3 +257,19 @@ export const fetchRequestStats = () => apiFetch<RequestStats>('/api/requests/sta
 
 export const fetchPlaylistDate = (date: string) =>
   apiFetch<PlaylistDay>(`/api/playlist/date/${date}`);
+
+export interface PlaylistMonthDay {
+  date: string;
+  kind: 'SCHOOL' | 'OFF' | 'EXAM_NO_BROADCAST' | null;
+  broadcast: boolean;
+  songCount: number;
+}
+
+export interface PlaylistMonth {
+  month: string;
+  days: PlaylistMonthDay[];
+}
+
+/** 月历标记：整月每天播不播、排了几首歌；month 形如 2026-11 */
+export const fetchPlaylistMonth = (month: string) =>
+  apiFetch<PlaylistMonth>(`/api/playlist/month/${month}`);

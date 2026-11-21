@@ -47,7 +47,7 @@ export async function buildPublicDay(date: string) {
         const songs = rows
           .filter((row) => row.slotId === slot.id)
           .map((row) => {
-            const [hour, minute] = slot.startTime.split(':').map(Number);
+            const [hour = 0, minute = 0] = slot.startTime.split(':').map(Number);
             const seconds = hour * 3600 + minute * 60 + Math.floor(elapsedMs / 1000);
             elapsedMs += Math.max(0, row.durationMs);
             return {

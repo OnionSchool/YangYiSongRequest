@@ -289,7 +289,9 @@ export async function unscheduleRequest(
     .from(schedule)
     .where(eq(schedule.requestId, requestId))
     .limit(1);
-  if (!scheduled[0]) throw notFound('SCHEDULE_NOT_FOUND', '找不到排期记录');
+  // 收窄后的值要落到 const：进到 transaction 回调里，对 scheduled[0] 的收窄会失效
+  const scheduledRow = scheduled[0];
+  if (!scheduledRow) throw notFound('SCHEDULE_NOT_FOUND', '找不到排期记录');
   const result = sqlite.transaction(() => {
     const request = sqlite
       .prepare('SELECT "playbackStatus", "groupId" FROM "SongRequest" WHERE "id" = ?')
@@ -297,7 +299,7 @@ export async function unscheduleRequest(
     if (request?.playbackStatus === 'PLAYED') {
       throw badRequest('REQUEST_ALREADY_PLAYED', '已播放歌曲不能撤回排期');
     }
-    const version = updateScheduleVersion(scheduled[0].playDate, expectedVersion);
+    const version = updateScheduleVersion(scheduledRow.playDate, expectedVersion);
     sqlite.prepare('DELETE FROM "Schedule" WHERE "requestId" = ?').run(requestId);
     const reset = sqlite.prepare(
       request?.groupId
@@ -309,8 +311,8 @@ export async function unscheduleRequest(
   })();
 
   await writeAudit(actorId, 'schedule.remove', requestId, {
-    playDate: scheduled[0].playDate,
-    slotId: scheduled[0].slotId,
+    playDate: scheduledRow.playDate,
+    slotId: scheduledRow.slotId,
   });
   return { ok: true as const, ...result };
 }

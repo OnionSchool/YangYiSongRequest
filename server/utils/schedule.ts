@@ -1,6 +1,8 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, like } from 'drizzle-orm';
 import { badRequest, conflict, notFound } from './errors';
 import { db, sqlite } from './db';
+import { isDayKind } from './domain';
+import type { DayKind } from './domain';
 import {
   broadcastSlot,
   calendarDay,
@@ -11,7 +13,7 @@ import {
   songRequest,
   weeklyScheduleRule,
 } from './schema';
-import { addDays, shanghaiDate } from './time';
+import { addDays, isWeekend, shanghaiDate } from './time';
 
 export interface EffectiveSlot {
   id: string;
@@ -84,6 +86,127 @@ export async function getEffectiveSlots(
     }));
 }
 
+export interface BroadcastMonthDay {
+  date: string;
+  /** CalendarDay 里登记的日期类型，没登记就是 null */
+  kind: DayKind | null;
+  /** 这天到底播不播：OFF/考试不播一律不播，SCHOOL 可以抵消周末默认不播 */
+  broadcast: boolean;
+  /** 已审核通过并排进这天的歌数 */
+  songCount: number;
+}
+
+export interface BroadcastMonthView {
+  month: string;
+  days: BroadcastMonthDay[];
+}
+
+/**
+ * 月历用的整月汇总：每天播不播、排了几首歌。
+ * 只给标记用的数量，不泄露歌名与点歌人。
+ */
+export async function readBroadcastMonth(month: string): Promise<BroadcastMonthView> {
+  const year = Number(month.slice(0, 4));
+  const monthNo = Number(month.slice(5, 7));
+  const lastDay = new Date(Date.UTC(year, monthNo, 0)).getUTCDate();
+  const monthPattern = `${month}-%`;
+
+  const [calendarRows, overrideDayRows, overrideRows, weeklyRows, slotRows, countRows] =
+    await Promise.all([
+      db
+        .select({ date: calendarDay.date, kind: calendarDay.kind })
+        .from(calendarDay)
+        .where(like(calendarDay.date, monthPattern)),
+      db
+        .select({ date: dateScheduleOverrideDay.date })
+        .from(dateScheduleOverrideDay)
+        .where(like(dateScheduleOverrideDay.date, monthPattern)),
+      db
+        .select({
+          date: dateScheduleOverride.date,
+          slotId: dateScheduleOverride.slotId,
+          sortOrder: dateScheduleOverride.sortOrder,
+        })
+        .from(dateScheduleOverride)
+        .where(like(dateScheduleOverride.date, monthPattern))
+        .orderBy(asc(dateScheduleOverride.sortOrder)),
+      db
+        .select({
+          weekday: weeklyScheduleRule.weekday,
+          slotId: weeklyScheduleRule.slotId,
+          sortOrder: weeklyScheduleRule.sortOrder,
+        })
+        .from(weeklyScheduleRule)
+        .orderBy(asc(weeklyScheduleRule.sortOrder)),
+      db
+        .select({ id: broadcastSlot.id, enabled: broadcastSlot.enabled })
+        .from(broadcastSlot)
+        .orderBy(asc(broadcastSlot.sortOrder)),
+      db
+        .select({ date: schedule.playDate, count: count() })
+        .from(schedule)
+        .innerJoin(songRequest, eq(schedule.requestId, songRequest.id))
+        .where(and(like(schedule.playDate, monthPattern), eq(songRequest.status, 'SCHEDULED')))
+        .groupBy(schedule.playDate),
+    ]);
+
+  const kindByDate = new Map<string, DayKind>();
+  for (const row of calendarRows) {
+    if (isDayKind(row.kind)) kindByDate.set(row.date, row.kind);
+  }
+
+  // 每天单独指定的时段：只要这天被 override 过，就不再走周规则
+  const overrideDates = new Set(overrideDayRows.map((row) => row.date));
+  const overrideSlotsByDate = new Map<string, string[]>();
+  for (const row of overrideRows) {
+    const slots = overrideSlotsByDate.get(row.date) ?? [];
+    slots.push(row.slotId);
+    overrideSlotsByDate.set(row.date, slots);
+  }
+
+  const weeklySlotsByWeekday = new Map<number, string[]>();
+  for (const row of weeklyRows) {
+    const slots = weeklySlotsByWeekday.get(row.weekday) ?? [];
+    slots.push(row.slotId);
+    weeklySlotsByWeekday.set(row.weekday, slots);
+  }
+
+  const slotEnabled = new Map(slotRows.map((row) => [row.id, row.enabled === 1]));
+  const allSlotsEnabled = slotRows.filter((row) => row.enabled === 1).length;
+  const hasWeeklyRules = weeklyRows.length > 0;
+  const songCountByDate = new Map(countRows.map((row) => [row.date, Number(row.count)]));
+
+  /** 时刻表每个月都可能不一样，但只要“这天有没有可用时段”，跟着 getEffectiveSlots 的规则走 */
+  function hasEnabledSlots(date: string): boolean {
+    const override = overrideDates.has(date) ? (overrideSlotsByDate.get(date) ?? []) : null;
+    const slotIds = override ?? weeklySlotsByWeekday.get(weekday(date)) ?? [];
+    if (slotIds.length > 0) return slotIds.some((id) => slotEnabled.get(id) === true);
+    if (override === null && !hasWeeklyRules) return allSlotsEnabled > 0;
+    return false;
+  }
+
+  /** 周末默认不播，CalendarDay 登记 SCHOOL 才当成上学日；OFF / 考试不播一律不播 */
+  function isBroadcastDay(date: string, kind: DayKind | null): boolean {
+    if (kind === 'SCHOOL') return true;
+    if (kind === 'OFF' || kind === 'EXAM_NO_BROADCAST') return false;
+    return !isWeekend(date) && hasEnabledSlots(date);
+  }
+
+  const days: BroadcastMonthDay[] = [];
+  for (let day = 1; day <= lastDay; day += 1) {
+    const date = `${month}-${String(day).padStart(2, '0')}`;
+    const kind = kindByDate.get(date) ?? null;
+    days.push({
+      date,
+      kind,
+      broadcast: isBroadcastDay(date, kind),
+      songCount: songCountByDate.get(date) ?? 0,
+    });
+  }
+
+  return { month, days };
+}
+
 export async function getScheduleVersion(date: string): Promise<number> {
   const row = await db.select().from(scheduleDay).where(eq(scheduleDay.date, date)).limit(1);
   return row[0]?.version ?? 0;
@@ -110,7 +233,8 @@ export async function validateSchedulableDate(date: string): Promise<void> {
 }
 
 function minutes(time: string): number {
-  const [hour, minute] = time.split(':').map(Number);
+  // 缺省 0：字符串不符合 HH:mm 时也退成 0，不把 undefined 带进计算
+  const [hour = 0, minute = 0] = time.split(':').map(Number);
   return hour * 60 + minute;
 }
 
