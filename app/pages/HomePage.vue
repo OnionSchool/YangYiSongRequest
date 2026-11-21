@@ -5,8 +5,8 @@ import PlaylistDeck from '@/components/PlaylistDeck.vue';
 import type { DeckDay } from '@/components/PlaylistDeck.vue';
 import RequestSlip from '@/components/RequestSlip.vue';
 import SongRow from '@/components/SongRow.vue';
-import { ApiError, SOURCES, fetchRecentPlaylist, searchSongs } from '@/lib/api';
-import type { PlaylistDay, PlaylistSlot, Song, SourceId } from '@/lib/api';
+import { ApiError, SOURCES, fetchRecentPlaylist, fetchRequestStats, searchSongs } from '@/lib/api';
+import type { PlaylistDay, PlaylistSlot, RequestStats, Song, SourceId } from '@/lib/api';
 import { activeSlot } from '@/lib/slots';
 import { hhmm, isoDate, relativeDayLabel, shiftDate } from '@/lib/time';
 import { useServerClock } from '@/stores/clock';
@@ -30,6 +30,7 @@ const submitted = ref('');
 const active = ref<SourceId>('netease');
 const picked = ref<Song | null>(null);
 const recent = ref<PlaylistDay[]>([]);
+const stats = ref<RequestStats | null>(null);
 let searchSequence = 0;
 const tabSequences: Record<SourceId, number> = {
   netease: 0,
@@ -87,7 +88,10 @@ const todayIndex = computed(() => {
 
 onMounted(async () => {
   await site.load();
-  recent.value = await fetchRecentPlaylist().catch(() => []);
+  [recent.value, stats.value] = await Promise.all([
+    fetchRecentPlaylist().catch(() => []),
+    fetchRequestStats().catch(() => null),
+  ]);
 });
 
 /** 三家各发一次、互不阻塞：一家挂了只影响它自己那个 tab */
@@ -145,6 +149,28 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
       查看过往歌单
     </RouterLink>
   </p>
+
+  <!-- 审核概况：只放数字，不涉任何歌曲或点歌人信息 -->
+  <section v-if="stats && stats.total > 0" class="paper-card mt-6 px-5 py-4">
+    <h2 class="eyebrow">审核概况</h2>
+    <dl class="mt-3 grid grid-cols-3">
+      <div class="pr-3">
+        <dt class="text-xs text-ink-soft">总点歌</dt>
+        <dd class="mt-1 font-mono text-2xl tabular-nums">{{ stats.total }}</dd>
+      </div>
+      <div class="border-l border-rule px-3">
+        <dt class="text-xs text-ink-soft">已通过</dt>
+        <dd class="mt-1 font-mono text-2xl tabular-nums">{{ stats.approved }}</dd>
+      </div>
+      <div class="border-l border-rule pl-3">
+        <dt class="text-xs text-ink-soft">已驳回</dt>
+        <dd class="mt-1 font-mono text-2xl tabular-nums text-ink-soft">{{ stats.rejected }}</dd>
+      </div>
+    </dl>
+    <p class="mt-3 text-xs text-ink-soft">
+      总数减去已通过和已驳回，就是还在排队等审、或已被取消的歌。
+    </p>
+  </section>
 
   <section v-if="site.data?.requestsOpen" class="mt-8">
     <h2 class="eyebrow">搜索</h2>

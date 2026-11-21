@@ -1,5 +1,5 @@
 import { randomInt } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 import { db, sqlite } from './db';
 import { songRequest, schedule, broadcastSlot } from './schema';
 import { GRADE_LABELS, encodeWordList, isGrade, isRequestStatus } from './domain';
@@ -201,6 +201,34 @@ export async function submitRequest(
     }
   }
   throw badRequest('CODE_COLLISION', '查询码生成失败，再点一次试试');
+}
+
+export interface RequestStatsView {
+  /** 库里全部点歌记录数 */
+  total: number;
+  /** 已通过并排进播出单的，状态为 SCHEDULED */
+  approved: number;
+  /** 被驳回的 */
+  rejected: number;
+}
+
+/** 首页那句「点歌概况」用的一次性汇总，只暴露数量，不含任何歌曲或点歌人信息 */
+export async function readRequestStats(): Promise<RequestStatsView> {
+  const rows = await db
+    .select({ status: songRequest.status, count: count() })
+    .from(songRequest)
+    .groupBy(songRequest.status);
+
+  let total = 0;
+  let approved = 0;
+  let rejected = 0;
+  for (const row of rows) {
+    const value = Number(row.count);
+    total += value;
+    if (row.status === 'SCHEDULED') approved = value;
+    else if (row.status === 'REJECTED') rejected = value;
+  }
+  return { total, approved, rejected };
 }
 
 export interface LookupView {

@@ -247,5 +247,13 @@ export const streamUrl = (source: SourceId, platformId: string) =>
 
 export const fetchRecentPlaylist = () => apiFetch<PlaylistDay[]>('/api/playlist/recent');
 
+export interface RequestStats {
+  total: number;
+  approved: number;
+  rejected: number;
+}
+
+export const fetchRequestStats = () => apiFetch<RequestStats>('/api/requests/stats');
+
 export const fetchPlaylistDate = (date: string) =>
   apiFetch<PlaylistDay>(`/api/playlist/date/${date}`);

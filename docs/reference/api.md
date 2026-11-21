@@ -40,6 +40,7 @@
 | POST | `/api/request/challenge`                  | 获取一次性 PoW 挑战                |
 | POST | `/api/request`                            | 提交点歌                           |
 | GET  | `/api/requests/lookup?code=`              | 用查询码查看本人点歌状态           |
+| GET  | `/api/requests/stats`                     | 点歌总数、已通过数与驳回数         |
 | GET  | `/api/playlist/recent`                    | 获取最近节目单                     |
 | GET  | `/api/playlist/date/:date`                | 获取指定日期节目单                 |
 | GET  | `/api/health`                             | 健康检查                           |
