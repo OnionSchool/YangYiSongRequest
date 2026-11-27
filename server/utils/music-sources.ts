@@ -897,7 +897,47 @@ async function loadSearchSongs(
   const apis = await getApisForSource(source, 'search');
   const metingApis = apis.filter((api) => api.type === 'meting');
   if (metingApis.length === 0) return templateSearch(source, keyword, page);
-  return metingSearch(source, keyword, page);
+  // 模板请求与 meting 并行发出，避免串行等待拖慢搜索。
+  const templatePromise = apis.some((api) => api.type === 'template')
+    ? templateSearch(source, keyword, page).catch(() => null)
+    : null;
+  const primary = await metingSearch(source, keyword, page);
+  // meting 协议搜索接口普遍不带时长/专辑（QQ 实测只有 title/author/url/pic/lrc）。
+  // 若该平台同时挂了模板 provider，用模板结果按 platformId 补齐缺失元数据。
+  if (!templatePromise) return primary;
+  const template = await templatePromise;
+  if (!template) return primary;
+  return enrichTemplateMetadata(primary, template);
+}
+
+/**
+ * 用模板音源的搜索结果富化 meting 结果的元数据。
+ * 按 platformId 精确匹配（QQ 的 songmid 在两侧完全一致），只补空缺字段，
+ * 不覆盖 meting 已有的值。
+ */
+export function enrichTemplateMetadata(primary: SearchPage, template: SearchPage): SearchPage {
+  const byId = new Map(template.songs.map((song) => [song.platformId, song]));
+  let touched = 0;
+  const songs = primary.songs.map((song) => {
+    const extra = byId.get(song.platformId);
+    if (!extra) return song;
+    const enriched = {
+      ...song,
+      durationMs: song.durationMs > 0 ? song.durationMs : extra.durationMs,
+      album: song.album ?? extra.album,
+      coverUrl: song.coverUrl ?? extra.coverUrl,
+    };
+    if (
+      enriched.durationMs !== song.durationMs ||
+      enriched.album !== song.album ||
+      enriched.coverUrl !== song.coverUrl
+    ) {
+      touched += 1;
+    }
+    return enriched;
+  });
+  if (touched === 0) return primary;
+  return { ...primary, songs };
 }
 
 async function metingSearch(source: SourceId, keyword: string, page: number): Promise<SearchPage> {
