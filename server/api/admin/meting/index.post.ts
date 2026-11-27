@@ -9,42 +9,48 @@ import {
   invalidateMusicSearchCache,
   listMetingApis,
   METING_CAPABILITIES,
-  type MetingCapability,
 } from '../../../utils/music-sources';
+import {
+  parseProviderType,
+  providerTypeFields,
+  validCapabilities,
+  validPlatforms,
+} from '../../../utils/provider-config';
 import { validateExternalUrl } from '../../../utils/external-url';
-
-const VALID_PLATFORMS = ['netease', 'qq', 'kugou'];
-
-function validCapabilities(value: unknown): MetingCapability[] {
-  if (!Array.isArray(value)) return [...METING_CAPABILITIES];
-  return [...new Set(value)].filter(
-    (capability): capability is MetingCapability =>
-      typeof capability === 'string' && METING_CAPABILITIES.includes(capability as MetingCapability)
-  );
-}
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
   const session = requireSuper(event);
   const body = await readBody(event);
 
+  const type = parseProviderType(body.type);
   const name = typeof body.name === 'string' ? body.name.trim() : '';
-  const baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
-  const platforms = Array.isArray(body.platforms) ? body.platforms : VALID_PLATFORMS;
+  const rawBaseUrl = typeof body.baseUrl === 'string' ? body.baseUrl.trim() : '';
+  const platforms = validPlatforms(
+    body.platforms === undefined ? ['netease', 'qq', 'kugou'] : body.platforms
+  );
   const enabled = body.enabled !== false;
   const sortOrder = typeof body.sortOrder === 'number' ? body.sortOrder : 0;
-  const capabilities = validCapabilities(body.capabilities);
+  const capabilities = validCapabilities(
+    body.capabilities === undefined ? METING_CAPABILITIES : body.capabilities
+  );
   const authToken = typeof body.authToken === 'string' ? body.authToken.trim() : '';
 
-  if (!name) throw badRequest('BAD_NAME', '请填写 API 名称');
-  if (!baseUrl) throw badRequest('BAD_URL', '请填写 API 地址');
-  const baseUrlHost = new URL(baseUrl).hostname;
-  await validateExternalUrl(baseUrl, [baseUrlHost]);
-
-  const validPlatforms = platforms.filter(
-    (p: unknown) => typeof p === 'string' && VALID_PLATFORMS.includes(p)
-  );
-  if (validPlatforms.length === 0) {
+  if (!name) throw badRequest('BAD_NAME', '请填写名称');
+  const templateFields = providerTypeFields(body as Record<string, unknown>, type);
+  // 模板音源没有统一入口，baseUrl 允许留空；Meting 必须填。
+  const baseUrl = rawBaseUrl || (type === 'template' ? '' : '');
+  if (type === 'meting') {
+    if (!baseUrl) throw badRequest('BAD_URL', '请填写 API 地址');
+    let baseUrlHost: string;
+    try {
+      baseUrlHost = new URL(baseUrl).hostname;
+    } catch {
+      throw badRequest('BAD_URL', 'API 地址格式无效');
+    }
+    await validateExternalUrl(baseUrl, [baseUrlHost]);
+  }
+  if (platforms.length === 0) {
     throw badRequest('BAD_PLATFORMS', '至少选择一个支持的平台');
   }
   if (capabilities.length === 0) {
@@ -52,14 +58,16 @@ export default defineEventHandler(async (event) => {
   }
   if (authToken.length > 512) throw badRequest('BAD_AUTH_TOKEN', '鉴权密钥长度不能超过 512 个字符');
 
-  const id = `meting_${randomBytes(8).toString('hex')}`;
+  const id = `${type}_${randomBytes(8).toString('hex')}`;
   await db.insert(metingApi).values({
     id,
     name,
+    type,
     baseUrl,
     authToken: authToken || null,
-    platforms: JSON.stringify(validPlatforms),
+    platforms: JSON.stringify(platforms),
     capabilities: JSON.stringify(capabilities),
+    ...templateFields,
     enabled: enabled ? 1 : 0,
     sortOrder,
   });
@@ -67,7 +75,9 @@ export default defineEventHandler(async (event) => {
   invalidateMusicSearchCache();
   await writeAudit(session.userId, 'meting.create', id, {
     name,
+    type,
     baseUrl,
+    platforms,
     capabilities,
     authConfigured: Boolean(authToken),
   });

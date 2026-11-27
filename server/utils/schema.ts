@@ -227,10 +227,18 @@ export const powNonce = table('PowNonce', {
 export const metingApi = table('MetingApi', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
-  baseUrl: text('baseUrl').notNull(),
+  type: text('type').notNull().default('meting'),
+  // 模板 provider 没有统一 baseUrl，因此该列必须允许为空。
+  baseUrl: text('baseUrl'),
   authToken: text('authToken'),
   platforms: text('platforms').notNull().default('["netease","qq","kugou"]'),
   capabilities: text('capabilities').notNull().default('["search","metadata","download"]'),
+  searchUrlTemplate: text('searchUrlTemplate'),
+  detailUrlTemplate: text('detailUrlTemplate'),
+  audioUrlTemplate: text('audioUrlTemplate'),
+  coverUrlTemplate: text('coverUrlTemplate'),
+  fieldMap: text('fieldMap'),
+  metadataCapable: integer('metadataCapable').notNull().default(1),
   enabled: integer('enabled').notNull().default(1),
   sortOrder: integer('sortOrder').notNull().default(0),
   createdAt: integer('createdAt')

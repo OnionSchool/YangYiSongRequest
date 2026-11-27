@@ -5,8 +5,16 @@
  * this file from the build.
  */
 
-export const SOURCES = ['netease', 'qq', 'kugou'] as const;
+export const SOURCES = ['netease', 'qq', 'kugou', 'kuwo', 'migu', 'qishui'] as const;
 export type SourceId = (typeof SOURCES)[number];
+export const SOURCE_LABELS: Record<SourceId, string> = {
+  netease: '网易云音乐',
+  qq: 'QQ 音乐',
+  kugou: '酷狗音乐',
+  kuwo: '酷我音乐',
+  migu: '咪咕音乐',
+  qishui: '汽水音乐',
+};
 
 export const GRADES = ['G1', 'G2', 'G3'] as const;
 export type Grade = (typeof GRADES)[number];

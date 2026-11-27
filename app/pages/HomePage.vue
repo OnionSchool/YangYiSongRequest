@@ -8,11 +8,11 @@ import RequestSlip from '@/components/RequestSlip.vue';
 import SongRow from '@/components/SongRow.vue';
 import {
   ApiError,
-  SOURCES,
   fetchPlaylistDate,
   fetchPlaylistMonth,
   fetchRecentPlaylist,
   fetchRequestStats,
+  fetchSources,
   searchSongs,
 } from '@/lib/api';
 import type {
@@ -43,28 +43,22 @@ const player = usePlayer();
 
 const keyword = ref('');
 const submitted = ref('');
-const active = ref<SourceId>('netease');
+/** 只包含服务端真正挂了搜索 provider 的音源，避免渲染永远空白的 tab。 */
+const available = ref<Array<{ id: SourceId; label: string }>>([]);
+const active = ref<SourceId | null>(null);
 const picked = ref<Song | null>(null);
 const recent = ref<PlaylistDay[]>([]);
 const stats = ref<RequestStats | null>(null);
 let searchSequence = 0;
-const tabSequences: Record<SourceId, number> = {
-  netease: 0,
-  qq: 0,
-  kugou: 0,
-};
+const tabSequences = reactive<Partial<Record<SourceId, number>>>({});
 
 const blank = (): TabState => ({ status: 'idle', songs: [], total: 0, page: 1, message: '' });
-const tabs = reactive<Record<SourceId, TabState>>({
-  netease: blank(),
-  qq: blank(),
-  kugou: blank(),
-});
+const tabs = reactive<Partial<Record<SourceId, TabState>>>({});
 
 const now = computed(() => hhmm(clock.serverNow));
 const today = computed(() => isoDate(clock.serverNow));
 const activeSlotId = computed(() => activeSlot(site.slots, now.value)?.id ?? null);
-const currentTab = computed(() => tabs[active.value]);
+const currentTab = computed(() => (active.value ? tabs[active.value] : undefined));
 const searched = computed(() => submitted.value !== '');
 
 /** 日历里手动挑过、但不在「昨天起已排期」列表里的日期，单独存着 */
@@ -164,12 +158,25 @@ onMounted(async () => {
   ]);
   focusedDate.value = today.value;
   void loadMonth(calendarMonth.value);
+
+  const listed = await fetchSources().catch(() => ({ sources: [] }));
+  available.value = listed.sources;
+  for (const source of listed.sources) {
+    tabs[source.id] = blank();
+    tabSequences[source.id] = 0;
+  }
+  if (!active.value || !listed.sources.some((source) => source.id === active.value)) {
+    active.value = listed.sources[0]?.id ?? null;
+  }
 });
 
-/** 三家各发一次、互不阻塞：一家挂了只影响它自己那个 tab */
+/** 每个音源各发一次、互不阻塞：一家挂了只影响它自己那个 tab */
 async function run(source: SourceId, page: number, sequence: number): Promise<void> {
   const tab = tabs[source];
-  const tabSequence = ++tabSequences[source];
+  if (!tab) return;
+  const nextSequence = (tabSequences[source] ?? 0) + 1;
+  tabSequences[source] = nextSequence;
+  const tabSequence = nextSequence;
   tab.status = 'loading';
   tab.message = '';
   try {
@@ -193,10 +200,10 @@ function search(): void {
   submitted.value = text;
   const sequence = ++searchSequence;
   player.stop();
-  for (const source of SOURCES) void run(source.id, 1, sequence);
+  for (const source of available.value) void run(source.id, 1, sequence);
 }
 
-const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 20)));
+const pageCount = computed(() => Math.max(1, Math.ceil((currentTab.value?.total ?? 0) / 20)));
 </script>
 
 <template>
@@ -302,7 +309,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
 
     <div class="mt-3 flex gap-1.5 overflow-x-auto pb-1" role="tablist" aria-label="音源">
       <button
-        v-for="source in SOURCES"
+        v-for="source in available"
         :key="source.id"
         type="button"
         role="tab"
@@ -312,11 +319,12 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
         @click="active = source.id"
       >
         {{ source.label }}
-        <span v-if="searched && tabs[source.id].status === 'ready'" class="font-mono tabular-nums">
-          {{ tabs[source.id].total }}
+        <span v-if="searched && tabs[source.id]?.status === 'ready'" class="font-mono tabular-nums">
+          {{ tabs[source.id]?.total }}
         </span>
-        <span v-else-if="searched && tabs[source.id].status === 'error'">·</span>
+        <span v-else-if="searched && tabs[source.id]?.status === 'error'">·</span>
       </button>
+      <span v-if="available.length === 0" class="text-sm text-ink-faint">暂无可用音源</span>
     </div>
 
     <p v-if="player.error" class="mt-3 text-sm text-orange-deep">{{ player.error }}</p>
@@ -325,7 +333,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
       输入关键词后{{ site.guestPreviewOpen ? '可以试听，' : '' }}选中的歌点「点歌」提交给台里。
     </p>
 
-    <div v-else class="mt-3">
+    <div v-else-if="currentTab" class="mt-3">
       <p v-if="currentTab.status === 'loading'" class="text-sm text-ink-soft">搜索中…</p>
       <p v-else-if="currentTab.status === 'error'" class="text-sm text-orange-deep">
         {{ currentTab.message }}
@@ -348,7 +356,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
             type="button"
             class="rounded-control border border-rule px-3 py-1.5 text-sm disabled:opacity-40"
             :disabled="currentTab.page <= 1"
-            @click="run(active, currentTab.page - 1, searchSequence)"
+            @click="active && run(active, currentTab.page - 1, searchSequence)"
           >
             上一页
           </button>
@@ -359,7 +367,7 @@ const pageCount = computed(() => Math.max(1, Math.ceil(currentTab.value.total / 
             type="button"
             class="rounded-control border border-rule px-3 py-1.5 text-sm disabled:opacity-40"
             :disabled="currentTab.page >= pageCount"
-            @click="run(active, currentTab.page + 1, searchSequence)"
+            @click="active && run(active, currentTab.page + 1, searchSequence)"
           >
             下一页
           </button>

@@ -262,21 +262,36 @@ export interface SourceHealthRow {
 }
 
 export type MetingCapability = 'search' | 'metadata' | 'download';
+export type ProviderType = 'meting' | 'template';
 
-export interface MetingApiRow {
+/** 模板音源表单：URL 模板 + 可选字段映射，纯 HTTP 形态，不执行脚本。 */
+export interface ProviderTemplateFields {
+  searchUrlTemplate?: string;
+  detailUrlTemplate?: string;
+  audioUrlTemplate?: string;
+  coverUrlTemplate?: string;
+  /** JSON 对象字符串，形如 {"id":"rid","title":"song"} */
+  fieldMap?: string;
+  metadataCapable?: boolean;
+}
+
+export interface MetingApiRow extends ProviderTemplateFields {
   id: string;
   name: string;
+  type: ProviderType;
   baseUrl: string;
   platforms: SourceId[];
   capabilities: MetingCapability[];
   enabled: boolean;
   sortOrder: number;
+  metadataCapable: boolean;
   authConfigured: boolean;
 }
 
-export interface MetingApiInput {
+export interface MetingApiInput extends ProviderTemplateFields {
   name: string;
-  baseUrl: string;
+  type?: ProviderType;
+  baseUrl?: string;
   authToken?: string;
   platforms: SourceId[];
   capabilities: MetingCapability[];
@@ -389,15 +404,47 @@ export const updateMetingApi = (id: string, body: Partial<MetingApiInput>) =>
 export const deleteMetingApi = (id: string) =>
   apiFetch<{ ok: true }>(`/api/admin/meting/${encodeURIComponent(id)}`, { method: 'DELETE' });
 export const testMetingApi = (body: {
-  baseUrl: string;
+  type?: ProviderType;
+  baseUrl?: string;
   authToken?: string;
   platforms: SourceId[];
   capabilities: MetingCapability[];
+  searchUrlTemplate?: string;
+  detailUrlTemplate?: string;
+  audioUrlTemplate?: string;
+  coverUrlTemplate?: string;
+  fieldMap?: string;
 }) =>
   post<{ results: Array<{ source: SourceId; ok: boolean; detail: string }> }>(
     '/api/admin/meting/test',
     body
   );
+
+export interface LxImportCandidate {
+  template: string;
+  kind: 'search' | 'audio' | 'unknown';
+  unresolved: string[];
+  note: string;
+}
+
+export interface LxImportResult {
+  scriptName: string | null;
+  platforms: SourceId[];
+  candidates: LxImportCandidate[];
+  obfuscated: boolean;
+  warnings: string[];
+  probe?: {
+    ok: boolean;
+    detail: string;
+    template?: string;
+    fieldMap?: string;
+    singleObject?: boolean;
+    notes?: string[];
+  };
+}
+
+export const importLxScript = (script: string) =>
+  post<LxImportResult>('/api/admin/meting/import-lx', { script });
 
 export const readUsers = () => apiFetch<AdminUserRow[]>('/api/admin/users');
 export const createUser = (body: {

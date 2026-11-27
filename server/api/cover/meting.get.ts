@@ -10,7 +10,11 @@ const CACHE_CONTROL = 'public, max-age=2592000, s-maxage=2592000, immutable';
 const SOURCE_BY_SERVER: Record<string, SourceId> = {
   netease: 'netease',
   tencent: 'qq',
+  qq: 'qq',
   kugou: 'kugou',
+  kuwo: 'kuwo',
+  migu: 'migu',
+  qishui: 'qishui',
 };
 
 export default defineEventHandler(async (event) => {

@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm';
+import { SOURCES } from './domain';
 import type { SourceId } from './domain';
 import { db } from './db';
 import { siteSetting } from './schema';
 
-const SOURCES: readonly SourceId[] = ['netease', 'qq', 'kugou'];
+const PROVIDERS: readonly SourceId[] = SOURCES;
 const SETTING_PREFIX = 'downloadUrl.';
 const MODE_SETTING = 'downloadMode';
 
@@ -17,12 +18,12 @@ export async function readDownloadTemplates(): Promise<Record<SourceId, string>>
   const rows = await db.select().from(siteSetting);
   const settings = new Map(rows.map((row) => [row.key, row.value]));
   return Object.fromEntries(
-    SOURCES.map((source) => [source, settings.get(`${SETTING_PREFIX}${source}`) ?? ''])
+    PROVIDERS.map((source) => [source, settings.get(`${SETTING_PREFIX}${source}`) ?? ''])
   ) as Record<SourceId, string>;
 }
 
 export async function saveDownloadTemplates(templates: Record<SourceId, string>): Promise<void> {
-  for (const source of SOURCES) {
+  for (const source of PROVIDERS) {
     const key = `${SETTING_PREFIX}${source}`;
     const value = templates[source].trim();
     const existing = await db.select().from(siteSetting).where(eq(siteSetting.key, key)).limit(1);

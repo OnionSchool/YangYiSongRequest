@@ -4,6 +4,7 @@ import {
   checkSources,
   createMetingApi,
   deleteMetingApi,
+  importLxScript,
   readDownloadTemplates,
   readMetingApis,
   readObjectStorageBudget,
@@ -12,11 +13,15 @@ import {
   updateMetingApi,
   type DownloadTemplates,
   type DownloadMode,
+  type LxImportCandidate,
+  type LxImportResult,
   type MetingApiRow,
   type MetingCapability,
   type ObjectStorageBudget,
+  type ProviderType,
   type SourceHealthRow,
 } from '~/lib/adminApi';
+import { SOURCES } from '~/lib/api';
 import type { SourceId } from '~/lib/api';
 
 definePageMeta({ layout: 'admin' });
@@ -28,35 +33,160 @@ const checking = ref(false);
 const saving = ref(false);
 const testing = ref(false);
 const testResults = ref<Array<{ source: SourceId; ok: boolean; detail: string }> | null>(null);
-const templates = ref<DownloadTemplates>({ netease: '', qq: '', kugou: '' });
+const templates = ref<DownloadTemplates>({
+  netease: '',
+  qq: '',
+  kugou: '',
+  kuwo: '',
+  migu: '',
+  qishui: '',
+});
 const downloadMode = ref<DownloadMode>('proxy');
 const objectStorage = ref<ObjectStorageBudget | null>(null);
 const configMessage = ref<string | null>(null);
 const loadMessage = ref<string | null>(null);
 const apiMessage = ref<string | null>(null);
 const editingId = ref<string | null>(null);
-const newApi = ref({
+const BLANK_API = {
   name: '',
+  type: 'meting' as ProviderType,
   baseUrl: '',
   authToken: '',
   platforms: ['netease', 'qq', 'kugou'] as SourceId[],
   capabilities: ['search', 'metadata', 'download'] as MetingCapability[],
+  searchUrlTemplate: '',
+  detailUrlTemplate: '',
+  audioUrlTemplate: '',
+  coverUrlTemplate: '',
+  fieldMap: '',
+  metadataCapable: true,
   enabled: true,
   sortOrder: 0,
-});
+};
+const newApi = ref({ ...BLANK_API, platforms: [...BLANK_API.platforms] });
 
-const platformOptions: Array<{ id: SourceId; label: string }> = [
-  { id: 'netease', label: '网易云音乐' },
-  { id: 'qq', label: 'QQ 音乐' },
-  { id: 'kugou', label: '酷狗音乐' },
-];
-const sourceIcons: Record<string, string> = { netease: '🎵', qq: '🎧', kugou: '🎤' };
+const platformOptions: Array<{ id: SourceId; label: string }> = SOURCES;
+const sourceIcons: Record<string, string> = {
+  netease: '🎵',
+  qq: '🎧',
+  kugou: '🎤',
+  kuwo: '📻',
+  migu: '🎼',
+  qishui: '🥤',
+};
 const capabilityOptions: Array<{ id: MetingCapability; label: string; description: string }> = [
   { id: 'search', label: '搜索歌曲', description: '用于学生和后台搜索歌曲' },
   { id: 'metadata', label: '获取元数据', description: '用于封面和歌曲详情' },
   { id: 'download', label: '获取音频', description: '用于试听、时长检测和下载' },
 ];
-const apiFormTitle = computed(() => (editingId.value ? '编辑 Meting API' : '添加 Meting API'));
+const providerTypeOptions: Array<{ id: ProviderType; label: string; description: string }> = [
+  { id: 'meting', label: 'Meting API', description: '标准 Meting 接口，需填写 API 地址' },
+  { id: 'template', label: '模板音源', description: '填写 URL 模板与字段映射，不执行脚本' },
+];
+
+type TemplateKey =
+  'searchUrlTemplate' | 'detailUrlTemplate' | 'audioUrlTemplate' | 'coverUrlTemplate';
+
+const templateFieldOptions: Array<{
+  key: TemplateKey;
+  label: string;
+  placeholder: string;
+  description: string;
+  required?: boolean;
+}> = [
+  {
+    key: 'searchUrlTemplate',
+    label: '搜索地址模板',
+    placeholder: 'https://api.example.com/search?word=${keyword}&page=${page}',
+    description: '必填，返回 JSON 的搜索接口',
+    required: true,
+  },
+  {
+    key: 'detailUrlTemplate',
+    label: '详情地址模板',
+    placeholder: 'https://api.example.com/detail?id=${id}',
+    description: '可选，用于获取歌曲名、歌手、时长等元数据',
+  },
+  {
+    key: 'audioUrlTemplate',
+    label: '音频地址模板',
+    placeholder: 'https://api.example.com/url?id=${id}',
+    description: '可选，返回音频直链；不填则仅支持搜索与点歌',
+  },
+  {
+    key: 'coverUrlTemplate',
+    label: '封面地址模板',
+    placeholder: 'https://api.example.com/pic?id=${id}',
+    description: '可选，返回封面图片直链',
+  },
+];
+const apiFormTitle = computed(() => {
+  const kind = newApi.value.type === 'template' ? '模板音源' : 'Meting API';
+  return editingId.value ? `编辑${kind}` : `添加${kind}`;
+});
+
+const lxImporting = ref(false);
+const lxReport = ref<LxImportResult | null>(null);
+/** 探测已经用过搜索模板，其余候选项展示给管理员手工选用。 */
+const lxOtherCandidates = computed(() => {
+  const report = lxReport.value;
+  if (!report) return [];
+  const probed = report.probe?.ok ? report.probe.template : undefined;
+  return report.candidates.filter((candidate) => candidate.template !== probed);
+});
+
+async function onLxFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  lxImporting.value = true;
+  lxReport.value = null;
+  apiMessage.value = null;
+  try {
+    const script = await file.text();
+    const report = await importLxScript(script);
+    lxReport.value = report;
+    // 名称与平台自动回填，管理员仍可手改。
+    if (!newApi.value.name && report.scriptName) newApi.value.name = report.scriptName;
+    if (report.platforms.length > 0) {
+      newApi.value.platforms = report.platforms.filter((platform) =>
+        SOURCES.some((source) => source.id === platform)
+      );
+    }
+    if (report.probe?.ok && report.probe.template) {
+      newApi.value.searchUrlTemplate = report.probe.template;
+      if (report.probe.fieldMap) newApi.value.fieldMap = report.probe.fieldMap;
+    } else {
+      // 探测失败时仍填入最优搜索候选，便于管理员手工修正。
+      const fallback = report.candidates.find(
+        (candidate) => candidate.kind === 'search' && candidate.unresolved.length === 0
+      );
+      if (fallback && !newApi.value.searchUrlTemplate) {
+        newApi.value.searchUrlTemplate = fallback.template;
+      }
+    }
+    if (report.obfuscated) {
+      apiMessage.value = '脚本经过混淆，无法自动提取，请手工填写模板';
+    }
+  } catch (error) {
+    apiMessage.value = error instanceof Error ? error.message : '脚本解析失败';
+  } finally {
+    lxImporting.value = false;
+  }
+}
+
+function applyLxCandidate(candidate: LxImportCandidate) {
+  if (candidate.kind === 'search') {
+    newApi.value.searchUrlTemplate = candidate.template;
+  } else if (candidate.kind === 'audio') {
+    newApi.value.audioUrlTemplate = candidate.template;
+  } else if (!newApi.value.searchUrlTemplate) {
+    newApi.value.searchUrlTemplate = candidate.template;
+  } else if (!newApi.value.audioUrlTemplate) {
+    newApi.value.audioUrlTemplate = candidate.template;
+  }
+}
 
 async function load() {
   loading.value = true;
@@ -95,25 +225,24 @@ function percentage(value: number, limit: number): string {
 
 function resetApiForm() {
   editingId.value = null;
-  newApi.value = {
-    name: '',
-    baseUrl: '',
-    authToken: '',
-    platforms: ['netease', 'qq', 'kugou'],
-    capabilities: ['search', 'metadata', 'download'],
-    enabled: true,
-    sortOrder: 0,
-  };
+  newApi.value = { ...BLANK_API, platforms: [...BLANK_API.platforms] };
 }
 
 function editApi(api: MetingApiRow) {
   editingId.value = api.id;
   newApi.value = {
     name: api.name,
-    baseUrl: api.baseUrl,
+    type: api.type ?? 'meting',
+    baseUrl: api.baseUrl ?? '',
     authToken: '',
     platforms: [...api.platforms],
     capabilities: [...api.capabilities],
+    searchUrlTemplate: api.searchUrlTemplate ?? '',
+    detailUrlTemplate: api.detailUrlTemplate ?? '',
+    audioUrlTemplate: api.audioUrlTemplate ?? '',
+    coverUrlTemplate: api.coverUrlTemplate ?? '',
+    fieldMap: api.fieldMap ?? '',
+    metadataCapable: api.metadataCapable !== false,
     enabled: api.enabled,
     sortOrder: api.sortOrder,
   };
@@ -137,6 +266,36 @@ function toggleCapability(capability: MetingCapability) {
 async function testApi() {
   apiMessage.value = null;
   testResults.value = null;
+  if (newApi.value.type === 'template') {
+    if (!newApi.value.searchUrlTemplate.trim()) {
+      apiMessage.value = '请先填写搜索地址模板';
+      return;
+    }
+    if (newApi.value.platforms.length === 0) {
+      apiMessage.value = '至少选择一个支持的平台';
+      return;
+    }
+    testing.value = true;
+    try {
+      testResults.value = (
+        await testMetingApi({
+          type: 'template',
+          platforms: newApi.value.platforms,
+          capabilities: newApi.value.capabilities,
+          searchUrlTemplate: newApi.value.searchUrlTemplate.trim(),
+          detailUrlTemplate: newApi.value.detailUrlTemplate.trim() || undefined,
+          audioUrlTemplate: newApi.value.audioUrlTemplate.trim() || undefined,
+          coverUrlTemplate: newApi.value.coverUrlTemplate.trim() || undefined,
+          fieldMap: newApi.value.fieldMap.trim() || undefined,
+        })
+      ).results;
+    } catch (error: any) {
+      apiMessage.value = error.message ?? '测试失败';
+    } finally {
+      testing.value = false;
+    }
+    return;
+  }
   if (!newApi.value.baseUrl.trim()) {
     apiMessage.value = '请先填写 API 地址';
     return;
@@ -168,8 +327,16 @@ async function testApi() {
 
 async function saveApi() {
   apiMessage.value = null;
-  if (!newApi.value.name.trim() || !newApi.value.baseUrl.trim()) {
-    apiMessage.value = '请填写 API 名称和地址';
+  if (!newApi.value.name.trim()) {
+    apiMessage.value = '请填写 API 名称';
+    return;
+  }
+  if (newApi.value.type === 'meting' && !newApi.value.baseUrl.trim()) {
+    apiMessage.value = '请填写 API 地址';
+    return;
+  }
+  if (newApi.value.type === 'template' && !newApi.value.searchUrlTemplate.trim()) {
+    apiMessage.value = '请填写搜索地址模板';
     return;
   }
   if (newApi.value.platforms.length === 0) {
@@ -182,10 +349,25 @@ async function saveApi() {
   }
   saving.value = true;
   try {
+    const isTemplate = newApi.value.type === 'template';
     const body = {
-      ...newApi.value,
       name: newApi.value.name.trim(),
-      baseUrl: newApi.value.baseUrl.trim(),
+      type: newApi.value.type,
+      platforms: newApi.value.platforms,
+      capabilities: newApi.value.capabilities,
+      enabled: newApi.value.enabled,
+      sortOrder: newApi.value.sortOrder,
+      ...(isTemplate
+        ? {
+            baseUrl: '',
+            searchUrlTemplate: newApi.value.searchUrlTemplate.trim(),
+            detailUrlTemplate: newApi.value.detailUrlTemplate.trim() || undefined,
+            audioUrlTemplate: newApi.value.audioUrlTemplate.trim() || undefined,
+            coverUrlTemplate: newApi.value.coverUrlTemplate.trim() || undefined,
+            fieldMap: newApi.value.fieldMap.trim() || undefined,
+            metadataCapable: newApi.value.metadataCapable,
+          }
+        : { baseUrl: newApi.value.baseUrl.trim() }),
     };
     const result = editingId.value
       ? await updateMetingApi(editingId.value, body)
@@ -265,10 +447,74 @@ onMounted(load);
         <div>
           <h2 class="font-medium">{{ apiFormTitle }}</h2>
           <p class="mt-1 text-sm text-ink-faint">
-            支持标准 Meting API 查询参数：<code>server</code>、<code>type</code> 与
-            <code>id</code>。
+            Meting API 支持标准 <code>server</code>、<code>type</code> 与 <code>id</code>
+            查询参数；模板音源只按 URL 模板拼请求并读取 JSON 字段，不执行任何脚本。
           </p>
         </div>
+
+        <div
+          v-if="newApi.type === 'template'"
+          class="rounded-lg border border-dashed border-rule p-3"
+        >
+          <div class="flex flex-wrap items-center gap-3">
+            <label
+              class="cursor-pointer rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-medium hover:border-ink-faint"
+            >
+              导入 lx 音源脚本
+              <input type="file" accept=".js,.txt" class="hidden" @change="onLxFile" />
+            </label>
+            <span v-if="lxImporting" class="text-sm text-ink-faint">正在解析与探测…</span>
+            <span class="text-xs text-ink-faint">
+              自动提取接口地址、猜测平台并推断字段映射；混淆或加密脚本无法还原
+            </span>
+          </div>
+          <div v-if="lxReport" class="mt-3 space-y-2 text-sm">
+            <p :class="lxReport.probe?.ok ? 'text-green-700' : 'text-orange-deep'">
+              {{ lxReport.probe?.detail ?? '静态解析完成，未执行探测' }}
+            </p>
+            <ul
+              v-if="lxReport.warnings.length"
+              class="list-inside list-disc text-xs text-orange-deep"
+            >
+              <li v-for="warning in lxReport.warnings" :key="warning">{{ warning }}</li>
+            </ul>
+            <div v-if="lxOtherCandidates.length" class="space-y-1">
+              <p class="text-xs font-medium text-ink-faint">
+                脚本里的其他接口地址（点击填入对应栏位）：
+              </p>
+              <button
+                v-for="candidate in lxOtherCandidates"
+                :key="candidate.template"
+                type="button"
+                class="block w-full truncate rounded border border-rule px-2 py-1 text-left font-mono text-xs hover:border-orange"
+                :title="candidate.note"
+                @click="applyLxCandidate(candidate)"
+              >
+                {{ candidate.template }}
+                <span v-if="candidate.unresolved.length" class="text-orange-deep">
+                  （含未解析变量 {{ candidate.unresolved.join(', ') }}）
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <fieldset>
+          <legend class="text-sm font-medium">音源类型</legend>
+          <div class="mt-2 grid gap-2 sm:grid-cols-2">
+            <label
+              v-for="option in providerTypeOptions"
+              :key="option.id"
+              class="rounded-lg border border-rule px-3 py-2 text-sm"
+              :class="newApi.type === option.id ? 'border-orange bg-orange/10' : ''"
+            >
+              <span class="flex items-center gap-2 font-medium">
+                <input v-model="newApi.type" type="radio" :value="option.id" />
+                {{ option.label }}
+              </span>
+              <span class="mt-1 block text-xs text-ink-faint">{{ option.description }}</span>
+            </label>
+          </div>
+        </fieldset>
         <div class="grid gap-4 sm:grid-cols-2">
           <label class="block">
             <span class="text-sm font-medium">名称</span>
@@ -287,7 +533,7 @@ onMounted(load);
             />
           </label>
         </div>
-        <label class="block">
+        <label v-if="newApi.type === 'meting'" class="block">
           <span class="text-sm font-medium">Base URL</span>
           <input
             v-model="newApi.baseUrl"
@@ -296,7 +542,7 @@ onMounted(load);
             placeholder="https://meting.example.com/api"
           />
         </label>
-        <label class="block">
+        <label v-if="newApi.type === 'meting'" class="block">
           <span class="text-sm font-medium">鉴权密钥（METING_TOKEN）</span>
           <input
             v-model="newApi.authToken"
@@ -309,6 +555,48 @@ onMounted(load);
             用于 url、pic 和 lrc 请求的 HMAC-SHA1 签名，仅保存在服务端。
           </span>
         </label>
+        <template v-if="newApi.type === 'template'">
+          <div
+            class="rounded-lg border border-rule bg-paper/60 p-3 text-xs text-ink-faint space-y-1"
+          >
+            <p>
+              模板占位符：<code v-pre>${{ '{keyword}' }}</code> 已编码关键词、
+              <code v-pre>${{ '{keywordRaw}' }}</code> 原始关键词、<code v-pre>${{ '{id}' }}</code>
+              平台歌曲 ID、<code v-pre>${{ '{page}' }}</code> 页码、
+              <code v-pre>${{ '{limit}' }}</code> 每页条数。
+            </p>
+            <p>只允许 http(s) 地址；域名会自动加入外部请求白名单。</p>
+          </div>
+          <div class="grid gap-4">
+            <label v-for="field in templateFieldOptions" :key="field.key" class="block">
+              <span class="text-sm font-medium">
+                {{ field.label }}<span v-if="field.required" class="text-orange"> *</span>
+              </span>
+              <input
+                v-model="newApi[field.key]"
+                class="mt-1.5 w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-mono focus:border-ink-faint focus:outline-none"
+                :placeholder="field.placeholder"
+              />
+              <span class="mt-1 block text-xs text-ink-faint">{{ field.description }}</span>
+            </label>
+          </div>
+          <label class="block">
+            <span class="text-sm font-medium">字段映射（可选，JSON）</span>
+            <textarea
+              v-model="newApi.fieldMap"
+              rows="4"
+              class="mt-1.5 w-full rounded-lg border border-rule bg-paper px-3 py-2 text-sm font-mono focus:border-ink-faint focus:outline-none"
+              placeholder='{"id":"rid","title":"song","artist":"singer"}'
+            />
+            <span class="mt-1 block text-xs text-ink-faint">
+              仅当接口字段名不在内置候选（id/rid/song/title/artist/singer 等）里时才需要填写。
+            </span>
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="newApi.metadataCapable" type="checkbox" />
+            此音源可提供歌曲元数据（关闭后允许客户端回传歌曲信息）
+          </label>
+        </template>
         <fieldset>
           <legend class="text-sm font-medium">支持的平台</legend>
           <div class="mt-2 flex flex-wrap gap-3">

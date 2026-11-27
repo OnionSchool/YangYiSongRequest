@@ -8,8 +8,17 @@ import { asc, eq } from 'drizzle-orm';
 import { db } from './db';
 import { metingApi } from './schema';
 import type { SourceId } from './domain';
+import { SOURCES } from './domain';
 import { fetchExternal, validateExternalUrl } from './external-url';
 import { logError } from './logger';
+import {
+  extractSongRecords,
+  mapSongRecord,
+  parseFieldMap,
+  renderTemplate,
+  type JsonValue,
+  type MappedSong,
+} from './music-templates';
 
 export interface SongSummary {
   source: SourceId;
@@ -125,12 +134,24 @@ export function invalidateMusicSearchCache(): void {
 export const METING_CAPABILITIES = ['search', 'metadata', 'download'] as const;
 export type MetingCapability = (typeof METING_CAPABILITIES)[number];
 
+/** 音源实现形态：Meting 协议，或「URL 模板 + 字段映射」的纯 HTTP 形态。 */
+export const PROVIDER_TYPES = ['meting', 'template'] as const;
+export type ProviderType = (typeof PROVIDER_TYPES)[number];
+
 export interface MetingApiConfig {
   id: string;
   name: string;
-  baseUrl: string;
+  type: ProviderType;
+  /** meting provider 必有 baseUrl；模板 provider 为 null。 */
+  baseUrl: string | null;
   platforms: SourceId[];
   capabilities: MetingCapability[];
+  searchUrlTemplate: string | null;
+  detailUrlTemplate: string | null;
+  audioUrlTemplate: string | null;
+  coverUrlTemplate: string | null;
+  fieldMap: string | null;
+  metadataCapable: boolean;
   enabled: boolean;
   sortOrder: number;
   authConfigured: boolean;
@@ -163,7 +184,7 @@ function parsePlatforms(value: string): SourceId[] {
     if (Array.isArray(platforms)) {
       return platforms.filter(
         (platform): platform is SourceId =>
-          typeof platform === 'string' && ['netease', 'qq', 'kugou'].includes(platform)
+          typeof platform === 'string' && (SOURCES as readonly string[]).includes(platform)
       );
     }
   } catch {
@@ -172,12 +193,23 @@ function parsePlatforms(value: string): SourceId[] {
   return [];
 }
 
+function parseProviderType(value: string | null | undefined): ProviderType {
+  return value === 'template' ? 'template' : 'meting';
+}
+
 function parseMetingApiRow(row: {
   id: string;
   name: string;
-  baseUrl: string;
+  type: string | null;
+  baseUrl: string | null;
   platforms: string;
   capabilities: string | null;
+  searchUrlTemplate: string | null;
+  detailUrlTemplate: string | null;
+  audioUrlTemplate: string | null;
+  coverUrlTemplate: string | null;
+  fieldMap: string | null;
+  metadataCapable: number;
   enabled: number;
   sortOrder: number;
   authToken: string | null;
@@ -185,9 +217,16 @@ function parseMetingApiRow(row: {
   return {
     id: row.id,
     name: row.name,
+    type: parseProviderType(row.type),
     baseUrl: row.baseUrl,
     platforms: parsePlatforms(row.platforms),
     capabilities: parseCapabilities(row.capabilities),
+    searchUrlTemplate: row.searchUrlTemplate,
+    detailUrlTemplate: row.detailUrlTemplate,
+    audioUrlTemplate: row.audioUrlTemplate,
+    coverUrlTemplate: row.coverUrlTemplate,
+    fieldMap: row.fieldMap,
+    metadataCapable: row.metadataCapable === 1,
     enabled: row.enabled === 1,
     sortOrder: row.sortOrder,
     authToken: row.authToken,
@@ -312,6 +351,10 @@ function metingRequestUrl(
   params: Record<string, string>
 ): string {
   let url: URL;
+  if (!api.baseUrl) {
+    // 只有模板 provider 会没有 baseUrl，走到这里说明配置被误用。
+    throw new SourceError(source, 'Meting API 地址无效', api.name);
+  }
   try {
     url = new URL(api.baseUrl);
   } catch {
@@ -337,7 +380,7 @@ async function metingFetchRaw<T>(
   params: Record<string, string>
 ): Promise<T> {
   const target = metingRequestUrl(api, source, params);
-  const apiUrl = metingApiAddress(api.baseUrl);
+  const apiUrl = metingApiAddress(api.baseUrl ?? '');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -404,7 +447,7 @@ async function metingRedirect(
               : 'Meting 返回非预期状态';
       logError(message, undefined, {
         meting: {
-          api: metingApiAddress(api.baseUrl),
+          api: metingApiAddress(api.baseUrl ?? ''),
           source,
           capability,
           platformId: params.id,
@@ -417,7 +460,12 @@ async function metingRedirect(
       });
     } catch (error) {
       logError('Meting 音频重定向请求失败', error, {
-        meting: { api: metingApiAddress(api.baseUrl), source, capability, platformId: params.id },
+        meting: {
+          api: metingApiAddress(api.baseUrl ?? ''),
+          source,
+          capability,
+          platformId: params.id,
+        },
       });
       // Try the next configured API.
     } finally {
@@ -539,11 +587,253 @@ async function mapWithConcurrency<T, R>(
 
 // ── Search ──────────────────────────────────────────────────────────
 
+// ── Template provider HTTP ──────────────────────────────
+
+/**
+ * 把响应文本解析成 JSON 值。
+ *
+ * 部分音源（酷我 `search.kuwo.cn` 就是典型）即使带了 `rformat=json`，返回的仍是
+ * 用单引号包裹的类 JSON，`JSON.parse` 会直接报错。所以再做一次宽容修正：
+ * 只在字符串字面量之外把单引号换成双引号。
+ */
+export function parseLooseJson(text: string): JsonValue {
+  try {
+    return JSON.parse(text) as JsonValue;
+  } catch {
+    let out = '';
+    let inString = false;
+    let quote = '';
+    for (let i = 0; i < text.length; i += 1) {
+      const char = text[i] as string;
+      if (inString) {
+        if (char === '\\') {
+          out += char + (text[i + 1] ?? '');
+          i += 1;
+          continue;
+        }
+        if (char === quote) {
+          inString = false;
+          out += '"';
+          continue;
+        }
+        // 原内容里的双引号在换成双引号字符串后必须转义。
+        out += char === '"' ? '\\"' : char;
+        continue;
+      }
+      if (char === "'" || char === '"') {
+        inString = true;
+        quote = char;
+        out += '"';
+        continue;
+      }
+      out += char;
+    }
+    return JSON.parse(out) as JsonValue;
+  }
+}
+
+/** 模板音源的公共请求封装：模板渲染 + JSON 解析 + 白名单校验。 */
+async function templateFetchJson(
+  source: SourceId,
+  template: string,
+  vars: { id?: string; keyword?: string; page?: number; limit?: number; size?: number | string }
+): Promise<JsonValue> {
+  const target = renderTemplate(template, vars);
+  let host: string;
+  try {
+    host = new URL(target).hostname;
+  } catch {
+    throw new SourceError(source, '音源模板地址无效', template);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetchExternal(target, { signal: controller.signal }, [host]);
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new SourceError(source, `音源接口返回 HTTP ${response.status}`, host);
+    }
+    const text = await response.text();
+    try {
+      return parseLooseJson(text);
+    } catch {
+      throw new SourceError(source, '音源接口未返回有效的 JSON', host);
+    }
+  } catch (error) {
+    if (error instanceof SourceError) throw error;
+    const message = error instanceof Error ? error.message : '请求音源接口失败';
+    throw new SourceError(source, message, host, error);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 直接使用搜索里返回的封面直链；没有直链时返回 undefined。 */
+function templateCoverUrl(song: MappedSong): string | undefined {
+  return song.cover && /^https?:\/\//.test(song.cover) ? song.cover : undefined;
+}
+
+/** 用模板音源搜索：遍历按优先级排序的 provider，先成功者胜出。 */
+async function templateSearch(
+  source: SourceId,
+  keyword: string,
+  page: number
+): Promise<SearchPage> {
+  const apis = (await getApisForSource(source, 'search')).filter(
+    (api) => api.type === 'template' && api.searchUrlTemplate
+  );
+  if (apis.length === 0) {
+    throw new SourceError(source, '未配置支持该平台“search”功能的音源');
+  }
+  let lastError: unknown;
+  for (const api of apis) {
+    try {
+      const data = await templateFetchJson(source, api.searchUrlTemplate as string, {
+        keyword,
+        page,
+      });
+      const map = parseFieldMap(api.fieldMap);
+      const records = extractSongRecords(data, map);
+      const songs = records
+        .map((record) => mapSongRecord(record, map))
+        .filter((song): song is MappedSong => song !== null);
+      if (songs.length === 0) {
+        lastError = new SourceError(source, '音源未返回搜索结果', api.name);
+        continue;
+      }
+
+      const start = (page - 1) * PAGE_SIZE;
+      const slice = songs.slice(start, start + PAGE_SIZE);
+      return {
+        source,
+        keyword,
+        page,
+        pageSize: PAGE_SIZE,
+        total: songs.length,
+        songs: slice.map((song) => {
+          storeSignedAudioUrl(source, song.platformId, song.audio);
+          return {
+            source,
+            platformId: song.platformId,
+            title: song.title || '未知歌曲',
+            artist: song.artist || '未知歌手',
+            album: song.album,
+            durationMs: song.durationMs,
+            coverUrl: templateCoverUrl(song),
+            vip: false,
+          };
+        }),
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof SourceError
+    ? lastError
+    : new SourceError(source, '所有音源均不可用', undefined, lastError);
+}
+
+/** 模板音源的详情；未配置详情模板时返回 null，由调用方决定如何处理。 */
+async function templateDetail(
+  source: SourceId,
+  requestedPlatformId: string
+): Promise<SongSummary | null> {
+  const apis = (await getApisForSource(source, 'metadata')).filter(
+    (api) => api.type === 'template' && api.detailUrlTemplate
+  );
+  for (const api of apis) {
+    try {
+      const data = await templateFetchJson(source, api.detailUrlTemplate as string, {
+        id: requestedPlatformId,
+      });
+      const map = parseFieldMap(api.fieldMap);
+      const song = extractSongRecords(data, map)
+        .map((record) => mapSongRecord(record, map))
+        .find((item): item is MappedSong => item?.platformId === requestedPlatformId);
+      if (!song) continue;
+      return {
+        source,
+        platformId: song.platformId,
+        title: song.title || '未知歌曲',
+        artist: song.artist || '未知歌手',
+        album: song.album,
+        durationMs: song.durationMs,
+        coverUrl: templateCoverUrl(song),
+        vip: false,
+      };
+    } catch {
+      // 下一个 provider
+    }
+  }
+  return null;
+}
+
+/** 模板音源的音频地址：先看缓存的直链，再渲染模板取重定向/直链。 */
+async function templateAudioUrl(source: SourceId, platformIdValue: string): Promise<string | null> {
+  const signedUrl = getSignedAudioUrl(source, platformIdValue);
+  if (signedUrl) {
+    const resolved = await resolveAudioUrl(signedUrl);
+    if (resolved) return resolved;
+  }
+  const apis = (await getApisForSource(source, 'download')).filter(
+    (api) => api.type === 'template' && api.audioUrlTemplate
+  );
+  for (const api of apis) {
+    try {
+      const target = renderTemplate(api.audioUrlTemplate as string, { id: platformIdValue });
+      const resolved = await resolveAudioUrl(target);
+      if (resolved) return resolved;
+    } catch {
+      // 下一个 provider
+    }
+  }
+  return null;
+}
+
+/** 模板音源的封面：用封面模板 + 封面 id 换取图片地址。 */
+async function templateCoverFetch(
+  source: SourceId,
+  picId: string,
+  size: string
+): Promise<string | null> {
+  const apis = (await getApisForSource(source, 'metadata')).filter(
+    (api) => api.type === 'template' && api.coverUrlTemplate
+  );
+  for (const api of apis) {
+    try {
+      const target = renderTemplate(api.coverUrlTemplate as string, { id: picId, size });
+      return await validExternalUrl(target);
+    } catch {
+      // 下一个 provider
+    }
+  }
+  return null;
+}
+
+/** 该平台是否有任何已启用的 provider 声明了 metadata 能力。 */
+export async function sourceHasMetadata(source: SourceId): Promise<boolean> {
+  const apis = await getApisForSource(source, 'metadata');
+  return apis.some((api) => api.type === 'meting' || api.metadataCapable);
+}
+
+/** 平台无 metadata 能力时，允许前端回传歌曲信息（服务端仅做范围校验）。 */
+export async function sourceAllowsClientMetadata(source: SourceId): Promise<boolean> {
+  return !(await sourceHasMetadata(source));
+}
+
 async function loadSearchSongs(
   source: SourceId,
   keyword: string,
   page: number
 ): Promise<SearchPage> {
+  // 平台只挂了模板 provider 时走模板分支；混配时保留原有 Meting 优先行为。
+  const apis = await getApisForSource(source, 'search');
+  const metingApis = apis.filter((api) => api.type === 'meting');
+  if (metingApis.length === 0) return templateSearch(source, keyword, page);
+  return metingSearch(source, keyword, page);
+}
+
+async function metingSearch(source: SourceId, keyword: string, page: number): Promise<SearchPage> {
   const songs = await metingFetch<MetingSong[]>(source, 'search', {
     type: 'search',
     id: keyword,
@@ -610,6 +900,12 @@ async function fetchDetail(
   source: SourceId,
   requestedPlatformId: string
 ): Promise<SongSummary | null> {
+  const apis = await getApisForSource(source, 'metadata');
+  if (apis.length === 0) return null;
+  // 纯模板平台直接走模板详情，不再尝试 Meting 协议。
+  if (apis.every((api) => api.type === 'template')) {
+    return templateDetail(source, requestedPlatformId);
+  }
   try {
     const songs = await metingFetch<MetingSong[]>(source, 'metadata', {
       type: 'song',
@@ -641,6 +937,11 @@ export async function fetchAudioUrl(source: SourceId, platformId: string): Promi
   if (signedUrl) {
     const resolvedUrl = await resolveAudioUrl(signedUrl);
     if (resolvedUrl) return resolvedUrl;
+  }
+  // 平台只挂模板 provider 时，Meting 重定向必然落空，直接走模板。
+  const downloadApis = await getApisForSource(source, 'download');
+  if (downloadApis.length > 0 && downloadApis.every((api) => api.type === 'template')) {
+    return templateAudioUrl(source, platformId);
   }
   const redirectUrl = await metingRedirect(source, 'download', {
     type: 'url',
@@ -741,6 +1042,10 @@ export async function fetchCoverUrl(
   picId: string,
   size = '300'
 ): Promise<string | null> {
+  const apis = await getApisForSource(source, 'metadata');
+  if (apis.length > 0 && apis.every((api) => api.type === 'template')) {
+    return templateCoverFetch(source, picId, size);
+  }
   const redirectUrl = await metingRedirect(source, 'metadata', {
     type: 'pic',
     id: picId,
@@ -763,7 +1068,7 @@ export async function fetchCoverUrl(
 // ── Public interface ────────────────────────────────────────────────
 
 export const isSourceId = (value: unknown): value is SourceId =>
-  typeof value === 'string' && ['netease', 'qq', 'kugou'].includes(value);
+  typeof value === 'string' && (SOURCES as readonly string[]).includes(value);
 
 export interface MusicSource {
   search(keyword: string, page: number): Promise<SearchPage>;
@@ -771,15 +1076,14 @@ export interface MusicSource {
 }
 
 export function getSource(source: unknown): MusicSource | null {
-  if (source === 'netease' || source === 'qq' || source === 'kugou') {
-    return {
-      async search(keyword: string, page: number) {
-        return searchSongs(source, keyword, page);
-      },
-      async detail(platformId: string) {
-        return fetchDetail(source, platformId);
-      },
-    };
-  }
-  return null;
+  if (!isSourceId(source)) return null;
+  const id = source;
+  return {
+    async search(keyword: string, page: number) {
+      return searchSongs(id, keyword, page);
+    },
+    async detail(platformId: string) {
+      return fetchDetail(id, platformId);
+    },
+  };
 }

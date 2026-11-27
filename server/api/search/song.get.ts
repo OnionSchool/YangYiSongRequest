@@ -15,7 +15,7 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: 'Invalid source',
-      message: 'source 必须是 netease、qq 或 kugou（通过 Meting API）',
+      message: 'source 必须是受支持的音源标识',
     });
   }
   if (!keyword) {

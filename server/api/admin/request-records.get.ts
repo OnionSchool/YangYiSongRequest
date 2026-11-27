@@ -4,6 +4,7 @@ import { requireSuper } from '../../utils/admin-auth';
 import { db } from '../../utils/db';
 import { songRequest } from '../../utils/schema';
 import { isValidDate } from '../../utils/schedule';
+import { SOURCES } from '../../utils/domain';
 
 const PAGE_SIZE = 30;
 
@@ -25,7 +26,7 @@ export default defineEventHandler(async (event) => {
   const from = url.searchParams.get('from')?.trim();
   const to = url.searchParams.get('to')?.trim();
   const validStatuses = new Set(['PENDING', 'SCHEDULED', 'REJECTED', 'CANCELLED']);
-  const validSources = new Set(['netease', 'qq', 'kugou']);
+  const validSources = new Set<string>(SOURCES);
   if ((status && !validStatuses.has(status)) || (source && !validSources.has(source))) {
     throw createError({ statusCode: 400, message: '筛选条件无效' });
   }

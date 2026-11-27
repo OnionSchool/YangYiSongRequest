@@ -8,7 +8,7 @@ import { badRequest, notFound, tooMany } from './errors';
 import { IP_DAILY_LIMIT, isInternalRateLimitEnabled } from './rate-limits';
 import { shanghaiDayStart } from './time';
 import { isValid6DigitCode } from './runtime';
-import { getSource } from './music-sources';
+import { getSource, sourceAllowsClientMetadata } from './music-sources';
 import { findBannedHits, findContentScriptHits } from './banned-words';
 import { readSite } from './site';
 
@@ -84,13 +84,16 @@ export async function submitRequest(
   if (!source) throw badRequest('BAD_SOURCE', '音源不对');
   if (typeof input.platformId !== 'string' || !input.platformId.trim())
     throw badRequest('BAD_SONG', '没选歌');
+  const sourceId = input.source as SourceId;
 
   const identity = normalizeIdentity(input, site.requireIdentity, site.classCounts);
 
-  // Prefer server-verified metadata; fall back to client data for sources without detail API (e.g. kugou)
+  // Prefer server-verified metadata; fall back to client data only when the platform's provider
+  // does not advertise a metadata capability at all.
   let song = await source.detail(input.platformId.trim());
   if (!song) {
-    if (input.source !== 'kugou') throw notFound('SONG_NOT_FOUND', '这首歌查不到了，换一首试试');
+    if (!(await sourceAllowsClientMetadata(sourceId)))
+      throw notFound('SONG_NOT_FOUND', '这首歌查不到了，换一首试试');
     if (typeof input.title !== 'string' || !input.title.trim() || input.title.trim().length > 160) {
       throw notFound('SONG_NOT_FOUND', '这首歌查不到了，换一首试试');
     }
@@ -109,7 +112,7 @@ export async function submitRequest(
       throw badRequest('BAD_SONG', '歌曲信息无效');
     }
     song = {
-      source: 'kugou',
+      source: sourceId,
       platformId: input.platformId.trim(),
       title: input.title.trim(),
       artist: artist || '未知歌手',

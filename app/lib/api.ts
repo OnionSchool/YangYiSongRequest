@@ -1,7 +1,7 @@
 // 后端接口的唯一入口。契约见 API.md。
 // 约定：后端所有错误都是 { error: { code, message } }，message 是可以直接显示给学生的中文。
 
-export type SourceId = 'netease' | 'qq' | 'kugou';
+export type SourceId = 'netease' | 'qq' | 'kugou' | 'kuwo' | 'migu' | 'qishui';
 export type Grade = 'G1' | 'G2' | 'G3';
 export type RequestStatus = 'PENDING' | 'SCHEDULED' | 'REJECTED' | 'CANCELLED' | 'PLAYED';
 
@@ -9,6 +9,9 @@ export const SOURCES: Array<{ id: SourceId; label: string }> = [
   { id: 'netease', label: '网易云音乐' },
   { id: 'qq', label: 'QQ 音乐' },
   { id: 'kugou', label: '酷狗音乐' },
+  { id: 'kuwo', label: '酷我音乐' },
+  { id: 'migu', label: '咪咕音乐' },
+  { id: 'qishui', label: '汽水音乐' },
 ];
 
 export const GRADE_OPTIONS: Array<{ value: Grade; label: string }> = [
@@ -169,6 +172,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 export const fetchServerInfo = () => apiFetch<ServerInfo>('/api/version');
 
 export const fetchSite = () => apiFetch<SiteSnapshot>('/api/site');
+
+/** 服务端当前实际启用搜索的音源；前端据此渲染 tab，避免空白标签页。 */
+export const fetchSources = () =>
+  apiFetch<{ sources: Array<{ id: SourceId; label: string }> }>('/api/sources');
 
 export const searchSongs = (source: SourceId, keyword: string, page = 1) =>
   apiFetch<SearchPage>(

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue';
 import AdminPagination from '~/components/AdminPagination.vue';
 import { listSongRequestRecords, type SongRequestRecord } from '~/lib/adminApi';
+import { SOURCES } from '~/lib/api';
 
 definePageMeta({ layout: 'admin' });
 
@@ -110,9 +111,9 @@ onMounted(load);
         音源
         <select v-model="filters.source" class="input-field">
           <option value="">全部音源</option>
-          <option value="netease">网易云</option>
-          <option value="qq">QQ 音乐</option>
-          <option value="kugou">酷狗音乐</option>
+          <option v-for="source in SOURCES" :key="source.id" :value="source.id">
+            {{ source.label }}
+          </option>
         </select>
       </label>
       <label class="grid gap-1.5 text-xs text-ink-faint">

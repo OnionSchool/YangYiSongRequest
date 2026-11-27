@@ -7,11 +7,11 @@ import {
 } from '../../../utils/download-config';
 import { writeAudit } from '../../../utils/audit';
 import { badRequest } from '../../../utils/errors';
+import { SOURCES } from '../../../utils/domain';
 import type { SourceId } from '../../../utils/domain';
 import { validateExternalUrl } from '../../../utils/external-url';
 
-const SOURCES: readonly SourceId[] = ['netease', 'qq', 'kugou'];
-
+const PROVIDERS: readonly SourceId[] = SOURCES;
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
   const session = requireSuper(event);
@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
   }
   const templates = Object.fromEntries(
     await Promise.all(
-      SOURCES.map(async (source) => {
+      PROVIDERS.map(async (source) => {
         const value = input[source];
         if (typeof value !== 'string' || value.length > 2_000) {
           throw badRequest('DOWNLOAD_TEMPLATE_INVALID', '下载地址配置无效');
@@ -42,7 +42,7 @@ export default defineEventHandler(async (event) => {
   await Promise.all([saveDownloadTemplates(templates), saveDownloadMode(mode)]);
   await writeAudit(session.userId, 'config.downloads', null, {
     mode,
-    configured: SOURCES.filter((source) => Boolean(templates[source].trim())),
+    configured: PROVIDERS.filter((source) => Boolean(templates[source].trim())),
   });
   return { templates, mode };
 });

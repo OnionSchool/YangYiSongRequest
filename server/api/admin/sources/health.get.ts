@@ -1,20 +1,30 @@
 import { defineEventHandler, setHeader } from 'h3';
 import { requirePlanner } from '../../../utils/admin-auth';
-import { searchSongs, SourceError } from '../../../utils/music-sources';
+import { listMetingApis, searchSongs, SourceError } from '../../../utils/music-sources';
+import { SOURCES, SOURCE_LABELS } from '../../../utils/domain';
 import type { SourceId } from '../../../utils/domain';
 
-const SOURCES: Array<{ source: SourceId; label: string }> = [
-  { source: 'netease', label: '网易云音乐' },
-  { source: 'qq', label: 'QQ 音乐' },
-  { source: 'kugou', label: '酷狗音乐' },
-];
+/** 只检测配置里真的挂了 provider 的平台，避免把未启用的平台报成故障。 */
+async function configuredSources(): Promise<SourceId[]> {
+  const apis = (await listMetingApis()).filter((api) => api.enabled);
+  const platforms = new Set<SourceId>();
+  for (const api of apis) {
+    if (!api.capabilities.includes('search')) continue;
+    for (const platform of api.platforms) platforms.add(platform);
+  }
+  return SOURCES.filter((source) => platforms.has(source));
+}
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
   requirePlanner(event);
 
-  const results = await Promise.all(
-    SOURCES.map(async ({ source, label }) => {
+  const sources = await configuredSources();
+  if (sources.length === 0) return [];
+
+  return await Promise.all(
+    sources.map(async (source) => {
+      const label = SOURCE_LABELS[source];
       try {
         const result = await searchSongs(source, '测试', 1);
         return {
@@ -29,6 +39,4 @@ export default defineEventHandler(async (event) => {
       }
     })
   );
-
-  return results;
 });

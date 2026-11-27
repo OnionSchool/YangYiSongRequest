@@ -16,12 +16,43 @@ function configuredHosts(): Set<string> {
   );
   try {
     for (const { baseUrl } of db.select({ baseUrl: metingApi.baseUrl }).from(metingApi).all()) {
-      hosts.add(new URL(baseUrl).hostname.toLowerCase());
+      // 模板 provider 的 baseUrl 为空，跳过即可（它的域名由下面的模板列登记）。
+      if (!baseUrl) continue;
+      try {
+        hosts.add(new URL(baseUrl).hostname.toLowerCase());
+      } catch {
+        // 配置里残留的非法地址不阻断其他主机登记。
+      }
+    }
+    // 模板音源没有统一 baseUrl，四个模板可能分布在不同域名，全部登记。
+    for (const row of db
+      .select({
+        search: metingApi.searchUrlTemplate,
+        detail: metingApi.detailUrlTemplate,
+        audio: metingApi.audioUrlTemplate,
+        cover: metingApi.coverUrlTemplate,
+      })
+      .from(metingApi)
+      .all()) {
+      for (const template of [row.search, row.detail, row.audio, row.cover]) {
+        const host = hostOfTemplate(template);
+        if (host) hosts.add(host);
+      }
     }
   } catch {
     // The database may not be initialized while running isolated validation tests.
   }
   return hosts;
+}
+
+/** 取模板里的主机名：忽略占位符段，只解析 `${id}` 之前的已知部分。 */
+function hostOfTemplate(template: string | null | undefined): string | null {
+  if (!template) return null;
+  const withoutQuery = template.split('?', 1)[0] ?? '';
+  const match = withoutQuery.match(/^[a-zA-Z][\w+.-]*:\/\/([^/${]+)/);
+  // 主机段本身可能含占位符（例如 `${host}/api`），这种无法静态登记。
+  if (!match || match[1]!.includes('$')) return null;
+  return match[1]!.toLowerCase();
 }
 
 // IANA IPv6 Special-Purpose Address Registry entries marked “Globally Reachable: False”.
