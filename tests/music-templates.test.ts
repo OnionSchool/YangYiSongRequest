@@ -8,6 +8,7 @@ import {
   normalizeDurationMs,
   normalizePlatformId,
   parseFieldMap,
+  renderFieldTemplate,
   pickField,
   readField,
   renderTemplate,
@@ -246,5 +247,41 @@ describe('renderTemplate md5hex 函数型占位符', () => {
 
   it('缺变量时拼接结果只剩字面量，不至于崩溃', () => {
     expect(renderTemplate('${md5hex(${missing} + "salt")}', {})).toBe(md5hexOf('salt'));
+  });
+});
+
+describe('双重转义实体解码', () => {
+  it('artist 中的 \\u0026 被还原成 &', () => {
+    const map = parseFieldMap('{"id":"id","title":"NAME","artist":"ARTIST"}');
+    const song = mapSongRecord(
+      { id: '1', NAME: '花海', ARTIST: 'DJ杨洋\\u0026何友\\u0026酒乐' },
+      map
+    );
+    expect(song?.artist).toBe('DJ杨洋&何友&酒乐');
+  });
+
+  it('不误伤普通反斜杠路径', () => {
+    const map = parseFieldMap('{"id":"id","title":"NAME","artist":"ARTIST"}');
+    const song = mapSongRecord({ id: '1', NAME: 'x', ARTIST: 'C:\\path\\xyz' }, map);
+    expect(song?.artist).toBe('C:\\path\\xyz');
+  });
+});
+
+describe('renderFieldTemplate 封面模板', () => {
+  it('酷我场景：相对路径拼接成完整 URL，斜杠保留', () => {
+    const record = { web_albumpic_short: '120/s4s0/93/1794217775.jpg' };
+    expect(
+      renderFieldTemplate('https://img1.kuwo.cn/star/albumcover/${web_albumpic_short}', record)
+    ).toBe('https://img1.kuwo.cn/star/albumcover/120/s4s0/93/1794217775.jpg');
+  });
+
+  it('字段缺失或为空时返回 null', () => {
+    expect(renderFieldTemplate('https://x.test/${missing}', {})).toBeNull();
+    expect(renderFieldTemplate('https://x.test/${f}', { f: '' })).toBeNull();
+  });
+
+  it('支持点号嵌套路径', () => {
+    const record = { imgItems: [{ img: 'https://a.test/c.jpg' }] };
+    expect(renderFieldTemplate('${imgItems.0.img}', record)).toContain('a.test');
   });
 });

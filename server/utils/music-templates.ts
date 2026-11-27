@@ -18,6 +18,30 @@ export interface TemplateVars {
   page?: number;
   limit?: number;
   size?: number | string;
+  /** 允许额外的 record 字段键（封面模板用），不参与内置变量校验。 */
+  [key: string]: string | number | undefined;
+}
+
+/**
+ * 用歌曲记录自身的字段渲染模板，专为「封面地址」这类逐条拼接的 URL 设计。
+ * `${字段路径}` 支持点号路径（如 `${web_albumpic_short}`、`${imgItems.0.img}`），
+ * 值经 URL 编码后代入。
+ * 任何一个占位符解析不到非空值时返回 null——拼出来的 URL 必然无效，
+ * 不如让上层回退到 cover 直链逻辑。
+ */
+export function renderFieldTemplate(template: string, record: JsonValue): string | null {
+  let failed = false;
+  const rendered = template.replace(/\$\{([\w.]+)\}/g, (match, path: string) => {
+    const value = stringValue(readField(record, path));
+    if (!value) {
+      failed = true;
+      return match;
+    }
+    // 保留斜杠：字段值多为路径片段（如酷我的 120/s4s0/93/x.jpg），
+    // 编码成 %2F 会破坏 URL 结构。空格与中文仍编码。
+    return encodeURI(value);
+  });
+  return failed ? null : rendered;
 }
 
 /**
@@ -220,10 +244,16 @@ const HTML_ENTITIES: Record<string, string> = {
 };
 
 function decodeEntities(text: string): string {
-  return text.replace(
+  const decoded = text.replace(
     /&(?:nbsp|amp|lt|gt|quot|#39);/g,
     (entity) => HTML_ENTITIES[entity] ?? entity
   );
+  // 酷我搜索接口会把 & 双重转义成字面量 "\u0026"（反斜杠+u+四位十六进制）。
+  // 只解码 u 后跟恰好四位十六进制数字的形态，避免误伤正常文本里的反斜杠。
+  return decoded.replace(/\\u([0-9a-fA-F]{4})/g, (match, hex: string) => {
+    const code = Number.parseInt(hex, 16);
+    return code > 0 ? String.fromCharCode(code) : match;
+  });
 }
 
 export function normalizeArtist(value: unknown): string {

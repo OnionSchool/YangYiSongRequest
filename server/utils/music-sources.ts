@@ -17,6 +17,7 @@ import {
   mapSongRecord,
   parseFieldMap,
   readField,
+  renderFieldTemplate,
   renderTemplate,
   type JsonValue,
   type MappedSong,
@@ -670,8 +671,21 @@ async function templateFetchJson(
   }
 }
 
-/** 直接使用搜索里返回的封面直链；没有直链时返回 undefined。 */
-function templateCoverUrl(song: MappedSong): string | undefined {
+/**
+ * 封面地址解析优先级：
+ * 1. coverUrlTemplate + 记录原始字段（酷我 web_albumpic_short 这类相对路径拼接）
+ * 2. 搜索字段映射里的封面直链
+ * 都没有则返回 undefined，前端显示占位图。
+ */
+function templateCoverUrl(
+  song: MappedSong,
+  coverTemplate?: string | null,
+  record?: JsonValue
+): string | undefined {
+  if (coverTemplate && record) {
+    const rendered = renderFieldTemplate(coverTemplate, record);
+    if (rendered && /^https?:\/\//.test(rendered)) return rendered;
+  }
   return song.cover && /^https?:\/\//.test(song.cover) ? song.cover : undefined;
 }
 
@@ -696,23 +710,27 @@ async function templateSearch(
       });
       const map = parseFieldMap(api.fieldMap);
       const records = extractSongRecords(data, map);
-      const songs = records
-        .map((record) => mapSongRecord(record, map))
-        .filter((song): song is MappedSong => song !== null);
-      if (songs.length === 0) {
+      // 封面模板需要记录原始字段（如酷我的 web_albumpic_short），
+      // 所以这里保留 record 与映射结果配对传递，而不是映射后丢掉原始数据。
+      const pairs = records
+        .map((record) => ({ record, song: mapSongRecord(record, map) }))
+        .filter(
+          (pair): pair is { record: typeof pair.record; song: MappedSong } => pair.song !== null
+        );
+      if (pairs.length === 0) {
         lastError = new SourceError(source, '音源未返回搜索结果', api.name);
         continue;
       }
 
       const start = (page - 1) * PAGE_SIZE;
-      const slice = songs.slice(start, start + PAGE_SIZE);
+      const slice = pairs.slice(start, start + PAGE_SIZE);
       return {
         source,
         keyword,
         page,
         pageSize: PAGE_SIZE,
-        total: songs.length,
-        songs: slice.map((song) => {
+        total: pairs.length,
+        songs: slice.map(({ record, song }) => {
           storeSignedAudioUrl(source, song.platformId, song.audio);
           return {
             source,
@@ -721,7 +739,7 @@ async function templateSearch(
             artist: song.artist || '未知歌手',
             album: song.album,
             durationMs: song.durationMs,
-            coverUrl: templateCoverUrl(song),
+            coverUrl: templateCoverUrl(song, api.coverUrlTemplate, record),
             vip: false,
           };
         }),
