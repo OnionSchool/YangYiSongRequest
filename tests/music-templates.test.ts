@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  audioUrlPaths,
   extractSongRecords,
   mapSongRecord,
   normalizeArtist,
@@ -191,5 +192,24 @@ describe('parseFieldMap', () => {
 
   it('数组不是合法映射', () => {
     expect(parseFieldMap('[1,2]')).toEqual({});
+  });
+});
+
+describe('audioUrlPaths', () => {
+  it('未配置 audio 时用内置候选', () => {
+    expect(audioUrlPaths({})).toEqual(['url', 'data.url', 'data', 'music', 'link']);
+  });
+
+  it('显式字符串路径排在最前', () => {
+    const paths = audioUrlPaths({ audio: 'result.link' });
+    expect(paths[0]).toBe('result.link');
+    expect(paths).toContain('url');
+    expect(paths.length).toBe(6);
+  });
+
+  it('显式数组路径全部保留且排在前面', () => {
+    const paths = audioUrlPaths({ audio: ['a.b', 'c'] });
+    expect(paths.slice(0, 2)).toEqual(['a.b', 'c']);
+    expect(paths.length).toBe(7);
   });
 });

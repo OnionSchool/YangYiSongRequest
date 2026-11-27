@@ -1,0 +1,25 @@
+{
+  "_comment": "酷我模板音源（已实测 2026-11，可直接导入）。来源：lx 脚本 feichangdao/qdy/helloworld 共用端点 + 酷我官方搜索。后台「新增音源」选 template 后逐项填入；fieldMap 直接粘贴 JSON。",
+  "type": "template",
+  "name": "酷我搜索解析（lx 转换）",
+  "platforms": ["kuwo"],
+  "capabilities": ["search", "download"],
+  "priority": 10,
+  "searchUrlTemplate": "https://search.kuwo.cn/r.s?all=${keyword}&ft=music&itemset=web_2013&client=kt&pn=0&rn=20&rformat=json&encoding=utf8&vipver=MUSIC_8.7.6.0.BCS31",
+  "audioUrlTemplate": "https://musicapi.haitangw.net/music/kw.php?type=mp3&id=${id}&level=320k",
+  "fieldMap": {
+    "id": "DC_TARGETID",
+    "title": "NAME",
+    "artist": "ARTIST",
+    "album": "ALBUM",
+    "duration": "DURATION",
+    "list": "abslist"
+  },
+  "notes": [
+    "搜索为酷我官方端点，返回单引号伪 JSON，服务端 parseLooseJson 已兼容",
+    "vipver 参数必须保留：不带时 ALBUM 恒为空且时长是 AAC 版本的值（实测花海 264s vs 210s）",
+    "DURATION 单位为秒，mapSongRecord 自动 ×1000 转毫秒",
+    "音频端点 302 直跳酷我 CDN，实测为完整音频（约 8MB/首），服务端按重定向解析",
+    "id 必须用纯数字的 DC_TARGETID，不能用带 MUSIC_ 前缀的 MUSICRID"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "_comment": "网易云模板音源（已实测 2026-11，可直接导入）。来源：lx 脚本 helloworld/ikun/feichangdao 提取 + GDStudio 聚合搜索。后台「新增音源」选 template 后逐项填入。",
+  "type": "template",
+  "name": "网易云聚合解析（lx 转换）",
+  "platforms": ["netease"],
+  "capabilities": ["search", "download"],
+  "priority": 10,
+  "searchUrlTemplate": "https://music-api.gdstudio.xyz/api.php?types=search&source=netease&name=${keyword}&count=20&pages=${page}",
+  "audioUrlTemplate": "https://musicapi.haitangw.net/music/wy.php?type=mp3&id=${id}&level=320k",
+  "fieldMap": {
+    "id": "id",
+    "title": "name",
+    "artist": "artist.0",
+    "album": "album",
+    "cover": "pic_id"
+  },
+  "notes": [
+    "音频端点 302 直跳网易 CDN，实测 200 完整音频",
+    "artist 是数组，artist.0 取第一位歌手；合唱曲目只保留首歌手",
+    "备选音频端点（JSON 形态，url 字段）：http://103.79.184.97/api/music/url?platform=wy&songId=${id}&quality=320k&key=6C1F-53W0-GRKI-EVFG ——裸 IP 第三方服务，稳定性无保障",
+    "若已有 Meting 网易音源，可只取本配置的 audioUrlTemplate 补足音质"
+  ]
+}

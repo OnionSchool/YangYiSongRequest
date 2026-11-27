@@ -260,3 +260,16 @@ export function parseFieldMap(raw: string | null | undefined): TemplateFieldMap 
     return {};
   }
 }
+
+/** 提取音频直链时的默认字段候选，覆盖 lx 生态常见返回形状。 */
+export const AUDIO_URL_FALLBACK_PATHS = ['url', 'data.url', 'data', 'music', 'link'] as const;
+
+/**
+ * 音频端点返回 JSON 时，按什么顺序尝试哪些字段路径。
+ * 管理员在 fieldMap 里显式配置的 audio 路径优先，内置候选兜底。
+ */
+export function audioUrlPaths(map: TemplateFieldMap): readonly string[] {
+  if (map.audio === undefined) return AUDIO_URL_FALLBACK_PATHS;
+  if (typeof map.audio === 'string') return [map.audio, ...AUDIO_URL_FALLBACK_PATHS];
+  return [...map.audio, ...AUDIO_URL_FALLBACK_PATHS];
+}

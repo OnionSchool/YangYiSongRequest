@@ -122,8 +122,10 @@ export function providerTypeFields(
 } {
   if (type !== 'template') return {};
   const parsed = parseProviderTemplate(body);
-  if (!parsed.searchUrlTemplate) {
-    throw badRequest('BAD_TEMPLATE', '模板音源必须填写搜索地址模板');
+  // lx 生态大量端点是纯音频解析（搜索由官方或 meting 承担），
+  // 所以搜索和音频至少填一个即可，不要求两者都在。
+  if (!parsed.searchUrlTemplate && !parsed.audioUrlTemplate) {
+    throw badRequest('BAD_TEMPLATE', '模板音源必须填写搜索或音频地址模板');
   }
   return {
     searchUrlTemplate: parsed.searchUrlTemplate,

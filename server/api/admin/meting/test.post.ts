@@ -5,9 +5,11 @@ import { badRequest } from '../../../utils/errors';
 import { fetchExternal, validateExternalUrl } from '../../../utils/external-url';
 import type { SourceId } from '../../../utils/domain';
 import {
+  audioUrlPaths,
   extractSongRecords,
   mapSongRecord,
   parseFieldMap,
+  readField,
   renderTemplate,
 } from '../../../utils/music-templates';
 import { parseLooseJson } from '../../../utils/music-sources';
@@ -37,11 +39,74 @@ async function validateBaseUrl(value: unknown): Promise<{ baseUrl: string; host:
 /** 用模板音源做一次真实搜索，验证 URL 模板与字段映射是否匹配。 */
 async function testTemplate(body: Record<string, unknown>) {
   const parsed = parseProviderTemplate(body);
-  if (!parsed.searchUrlTemplate) {
-    throw badRequest('BAD_TEMPLATE', '测试模板音源需要填写搜索地址模板');
+  if (parsed.searchUrlTemplate) {
+    return testTemplateSearch(parsed);
   }
+  if (parsed.audioUrlTemplate) {
+    return testTemplateAudio(parsed);
+  }
+  throw badRequest('BAD_TEMPLATE', '测试模板音源需要填写搜索或音频地址模板');
+}
+
+/** 音频模板测试：端点分两类——302 跳 CDN 的重定向型，或返回 JSON 的解析型。 */
+async function testTemplateAudio(parsed: {
+  audioUrlTemplate: string | null;
+  fieldMap: string | null;
+}) {
+  // 音频模板需要真实平台 id，但管理员手上未必有；用酷我花海这个公开 id 探测，
+  // 只能说明端点活着，是否适配其他平台还得靠实际播放验证。
+  const target = renderTemplate(parsed.audioUrlTemplate as string, { id: '474678847' });
+  let host: string;
+  try {
+    host = new URL(target).hostname;
+  } catch {
+    throw badRequest('BAD_TEMPLATE', '音频地址模板渲染后不是有效 URL');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetchExternal(target, { signal: controller.signal }, [host]);
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    try {
+      if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+        return { ok: true as const, detail: '重定向型端点正常（302 跳音频 CDN）' };
+      }
+      if (!response.ok) {
+        return { ok: false as const, detail: `HTTP ${response.status}` };
+      }
+      if (contentType.startsWith('audio/')) {
+        return { ok: true as const, detail: '直链型端点正常（直接返回音频流）' };
+      }
+      if (contentType.includes('json')) {
+        const text = await response.text();
+        const data = parseLooseJson(text);
+        const paths = audioUrlPaths(parseFieldMap(parsed.fieldMap));
+        for (const path of paths) {
+          const value = readField(data, path);
+          if (typeof value === 'string' && /^https?:\/\//.test(value)) {
+            return { ok: true as const, detail: `JSON 型端点正常（${path} 提取到链接）` };
+          }
+        }
+        return { ok: false as const, detail: 'JSON 里未找到音频链接，请检查字段映射' };
+      }
+      return { ok: false as const, detail: `响应类型不支持（${contentType || '未知'}）` };
+    } finally {
+      await response.body?.cancel().catch(() => undefined);
+    }
+  } catch (error) {
+    return { ok: false as const, detail: error instanceof Error ? error.message : '请求失败' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 搜索模板测试：验证 URL 模板与字段映射能从真实响应里解析出歌曲。 */
+async function testTemplateSearch(parsed: {
+  searchUrlTemplate: string | null;
+  fieldMap: string | null;
+}) {
   const map = parseFieldMap(parsed.fieldMap);
-  const target = renderTemplate(parsed.searchUrlTemplate, { keyword: '周杰伦', page: 1 });
+  const target = renderTemplate(parsed.searchUrlTemplate as string, { keyword: '周杰伦', page: 1 });
   let host: string;
   try {
     host = new URL(target).hostname;

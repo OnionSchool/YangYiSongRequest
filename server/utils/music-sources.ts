@@ -12,9 +12,11 @@ import { SOURCES } from './domain';
 import { fetchExternal, validateExternalUrl } from './external-url';
 import { logError } from './logger';
 import {
+  audioUrlPaths,
   extractSongRecords,
   mapSongRecord,
   parseFieldMap,
+  readField,
   renderTemplate,
   type JsonValue,
   type MappedSong,
@@ -768,7 +770,51 @@ async function templateDetail(
   return null;
 }
 
-/** 模板音源的音频地址：先看缓存的直链，再渲染模板取重定向/直链。 */
+/**
+ * 请求音频解析端点并按响应形态取直链：
+ *   1. 3xx 重定向 —— haitangw/nxinxz 这类直接 302 跳 CDN；
+ *   2. audio/* 直链 —— 端点本身就是音频流；
+ *   3. JSON —— lx 生态主流形态，用字段映射的 audio 路径（默认候选
+ *      url/data.url/data 等）提取链接后再验证。
+ */
+async function resolveTemplateAudioEndpoint(
+  target: string,
+  audioPaths: readonly string[]
+): Promise<string | null> {
+  let response: Response | undefined;
+  try {
+    response = await fetchExternal(target, { redirect: 'manual' });
+    const location = response.headers.get('location');
+    if (response.status >= 300 && response.status < 400 && location) {
+      return await validExternalUrl(new URL(location, response.url).toString());
+    }
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    if (contentType.startsWith('audio/')) {
+      return response.ok ? response.url : null;
+    }
+    if (!response.ok || !contentType.includes('json')) return null;
+    const text = await response.text();
+    let data: JsonValue;
+    try {
+      data = parseLooseJson(text);
+    } catch {
+      return null;
+    }
+    for (const path of audioPaths) {
+      const value = readField(data, path);
+      if (typeof value === 'string' && /^https?:\/\//.test(value)) {
+        return await validExternalUrl(value);
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  } finally {
+    await response?.body?.cancel().catch(() => undefined);
+  }
+}
+
+/** 模板音源的音频地址：先看缓存的直链，再渲染模板按响应形态解析。 */
 async function templateAudioUrl(source: SourceId, platformIdValue: string): Promise<string | null> {
   const signedUrl = getSignedAudioUrl(source, platformIdValue);
   if (signedUrl) {
@@ -781,7 +827,10 @@ async function templateAudioUrl(source: SourceId, platformIdValue: string): Prom
   for (const api of apis) {
     try {
       const target = renderTemplate(api.audioUrlTemplate as string, { id: platformIdValue });
-      const resolved = await resolveAudioUrl(target);
+      const resolved = await resolveTemplateAudioEndpoint(
+        target,
+        audioUrlPaths(parseFieldMap(api.fieldMap))
+      );
       if (resolved) return resolved;
     } catch {
       // 下一个 provider
