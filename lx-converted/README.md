@@ -59,6 +59,7 @@
 
 ## 重要限制
 
+- **酷我字段映射陷阱**（实测踩坑）：`artist` 必须映射 `ARTIST`（中文艺名），不是 `AARTIST`（英文艺名且多数条目为空）——填错会导致大面积歌手空白；搜索 URL 不要加 `vipver` 参数，实测反而降低专辑覆盖率
 - **VIP 曲目**：lx 脚本靠用户 Cookie 获取 VIP 内容，纯模板做不到；免费曲目不受影响
 - **试听片段**：部分端点对 VIP 歌返回 5~30 秒试听（如酷我官方 nmobi 接口），表现为 duration 字段极小；转换配置已避开这类端点
 - **POST 端点**：模板内核仅支持 GET。helloworld/huibq 的 POST+JSON body 端点（如 `musicserver.haitangw.cc/v1/music/resolve-url`）无法表达

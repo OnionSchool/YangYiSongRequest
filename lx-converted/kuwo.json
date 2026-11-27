@@ -5,7 +5,7 @@
   "platforms": ["kuwo"],
   "capabilities": ["search", "download"],
   "priority": 10,
-  "searchUrlTemplate": "https://search.kuwo.cn/r.s?all=${keyword}&ft=music&itemset=web_2013&client=kt&pn=0&rn=20&rformat=json&encoding=utf8&vipver=MUSIC_8.7.6.0.BCS31",
+  "searchUrlTemplate": "https://search.kuwo.cn/r.s?all=${keyword}&ft=music&itemset=web_2013&client=kt&pn=0&rn=20&rformat=json&encoding=utf8",
   "audioUrlTemplate": "https://musicapi.haitangw.net/music/kw.php?type=mp3&id=${id}&level=320k",
   "fieldMap": {
     "id": "DC_TARGETID",
@@ -16,10 +16,11 @@
     "list": "abslist"
   },
   "notes": [
-    "搜索为酷我官方端点，返回单引号伪 JSON，服务端 parseLooseJson 已兼容",
-    "vipver 参数必须保留：不带时 ALBUM 恒为空且时长是 AAC 版本的值（实测花海 264s vs 210s）",
-    "DURATION 单位为秒，mapSongRecord 自动 ×1000 转毫秒",
-    "音频端点 302 直跳酷我 CDN，实测为完整音频（约 8MB/首），服务端按重定向解析",
-    "id 必须用纯数字的 DC_TARGETID，不能用带 MUSIC_ 前缀的 MUSICRID"
+    "官方搜索接口，返回单引号伪 JSON，内核 parseLooseJson 已兼容",
+    "⚠️ artist 必须映射 ARTIST（中文艺名，20/20 有值）；AARTIST 是英文艺名且多数条目为空，映射错会导致大面积歌手空白",
+    "⚠️ 不要加 vipver 参数——实测它会降低专辑覆盖率（9/20 → 5/20）",
+    "专辑覆盖天然不全（重复条目/翻唱/DJ 版无专辑数据），这是数据源特性不是配置错误",
+    "platformId 必须用纯数字 DC_TARGETID，不是带前缀的 MUSICRID",
+    "DURATION 为秒，内核自动 ×1000"
   ]
 }
