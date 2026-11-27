@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   audioUrlPaths,
@@ -211,5 +212,39 @@ describe('audioUrlPaths', () => {
     const paths = audioUrlPaths({ audio: ['a.b', 'c'] });
     expect(paths.slice(0, 2)).toEqual(['a.b', 'c']);
     expect(paths.length).toBe(7);
+  });
+});
+
+describe('renderTemplate md5hex 函数型占位符', () => {
+  const md5hexOf = (input: string) => createHash('md5').update(input).digest('hex');
+
+  it('对变量与字符串字面量的拼接求 MD5', () => {
+    const rendered = renderTemplate('https://x.test/?key=${md5hex(${id} + "salt")}', {
+      id: 'abc',
+    });
+    expect(rendered).toBe(`https://x.test/?key=${md5hexOf('abcsalt')}`);
+  });
+
+  it('md5hexUpper 输出大写摘要', () => {
+    const rendered = renderTemplate('${md5hexUpper(${id} + "salt")}', { id: 'abc' });
+    expect(rendered).toBe(md5hexOf('abcsalt').toUpperCase());
+  });
+
+  it('酷狗签名场景：hash + kgcloudv2', () => {
+    const hash = 'e1b46ca428f22f75649b4d11b31fd354';
+    const rendered = renderTemplate(
+      'https://trackercdn.kugou.com/i/v2/?cmd=25&pid=1&behavior=play&hash=${id}&key=${md5hex(${id} + "kgcloudv2")}',
+      { id: hash }
+    );
+    expect(rendered).toContain(`key=${md5hexOf(hash + 'kgcloudv2')}`);
+    expect(rendered).toContain(`hash=${hash}`);
+  });
+
+  it('单引号字符串字面量同样拼接', () => {
+    expect(renderTemplate("${md5hex(${id} + 'salt')}", { id: 'abc' })).toBe(md5hexOf('abcsalt'));
+  });
+
+  it('缺变量时拼接结果只剩字面量，不至于崩溃', () => {
+    expect(renderTemplate('${md5hex(${missing} + "salt")}', {})).toBe(md5hexOf('salt'));
   });
 });

@@ -14,10 +14,24 @@
 
 ## 可用配置
 
-| 文件           | 平台    | 能力        | 实测结果                                             |
-| -------------- | ------- | ----------- | ---------------------------------------------------- |
-| `kuwo.json`    | kuwo    | search+下载 | ✅ 搜索正常返回专辑/时长；音频 302 跳 CDN 为完整文件 |
-| `netease.json` | netease | search+下载 | ✅ GDStudio 搜索 20 条；音频 302 跳网易 CDN          |
+| 文件           | 平台    | 能力        | 实测结果                                                                                                        |
+| -------------- | ------- | ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `kuwo.json`    | kuwo    | search+下载 | ✅ 搜索正常返回专辑/时长；音频 302 跳 CDN 为完整文件                                                            |
+| `netease.json` | netease | search+下载 | ✅ GDStudio 搜索 20 条；音频 302 跳网易 CDN                                                                     |
+| `kugou.json`   | kugou   | search+下载 | ✅ **全链路官方接口**：搜索字段完整；播放用静态签名 `md5(hex+salt)` 模板，CDN 实测 200 audio/mpeg（仅免费曲目） |
+| `migu.json`    | migu    | search      | ✅ 官方搜索字段完整（含封面直链）；播放无解（官方路由全灭，见下）                                               |
+| `qq.json`      | qq      | search      | ✅ 官方搜索含专辑/时长；播放走 meting（vkey 签名无法用纯模板表达）                                              |
+
+## 平台覆盖矩阵（含 meting）
+
+| 平台    | 搜索                  | 播放                  | 说明                                       |
+| ------- | --------------------- | --------------------- | ------------------------------------------ |
+| netease | meting / netease.json | meting / netease.json | 双通道互为备份                             |
+| qq      | meting / qq.json      | meting                | qq.json 提供专辑/时长更全的元数据          |
+| kuwo    | kuwo.json             | kuwo.json             | meting 协议不支持 kuwo，模板补齐           |
+| kugou   | meting / kugou.json   | meting / kugou.json   | kugou.json 播放仅免费曲目；付费曲走 meting |
+| migu    | migu.json             | ❌ 跨平台兜底         | 咪咕官方播放路由实测全部失效               |
+| qishui  | ❌ 不支持             | ❌ 不支持             | 汽水签名算法闭源且频繁变更，无解           |
 
 ## 逐脚本分析报告
 

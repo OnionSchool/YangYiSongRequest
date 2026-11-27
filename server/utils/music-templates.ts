@@ -6,6 +6,8 @@
  * 因此可以安全地在 Nitro 进程里跑，全部请求仍走 external-url 的白名单。
  */
 
+import { createHash } from 'node:crypto';
+
 /** 模板占位符：`${keyword}` `${id}` `${page}` `${limit}` `${size}` */
 export const TEMPLATE_VARS = ['keyword', 'id', 'page', 'limit', 'size'] as const;
 export type TemplateVar = (typeof TEMPLATE_VARS)[number];
@@ -19,11 +21,72 @@ export interface TemplateVars {
 }
 
 /**
+ * 计算 md5hex 表达式：变量占位符与字符串字面量用 + 拼接。
+ * 用简单的引号感知扫描而不是 eval，表达式里不允许出现函数调用或运算符。
+ */
+function evaluateConcat(expr: string, vars: TemplateVars): string {
+  let out = '';
+  let buffer = '';
+  let inString = false;
+  let quote = '';
+  const flushBuffer = () => {
+    const trimmed = buffer.trim();
+    buffer = '';
+    if (!trimmed) return;
+    const match = trimmed.match(/^\$\{(\w+)\}$/);
+    if (!match) return;
+    const value = vars[match[1] as TemplateVar];
+    if (value !== undefined && value !== null) out += String(value);
+  };
+  for (let i = 0; i < expr.length; i += 1) {
+    const char = expr[i] as string;
+    if (inString) {
+      if (char === quote) {
+        inString = false;
+        continue;
+      }
+      out += char;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      flushBuffer();
+      inString = true;
+      quote = char;
+      continue;
+    }
+    if (char === '+') {
+      flushBuffer();
+      continue;
+    }
+    buffer += char;
+  }
+  flushBuffer();
+  return out;
+}
+
+/**
  * 渲染模板。占位符缺失时保留原样，便于管理员在测试里立刻看出少填了什么。
  * 关键词同时提供 URL 编码形式（`${keyword}` 已编码，`${keywordRaw}` 原样）。
+ *
+ * 函数型占位符（先于普通变量展开）：
+ *   `${md5hex(id + "salt")}`      —— 对拼接结果求 MD5 十六进制小写摘要；
+ *   `${md5hexUpper(...)}`          —— 同上但大写。
+ * 表达式里只接受变量占位符与单/双引号字符串字面量的 + 拼接，
+ * 这不是脚本执行，只是字符串拼接，无法形成注入面。
+ * 用途：酷狗等官方端点的静态签名（key = md5(hash + "kgcloudv2")）。
  */
 export function renderTemplate(template: string, vars: TemplateVars): string {
-  return template.replace(/\$\{(\w+)\}/g, (match, name: string) => {
+  const withHashes = template.replace(
+    /\$\{(md5hex|md5hexUpper)\(([^()]*)\)\}/g,
+    (match, fn: string, expr: string) => {
+      const source = evaluateConcat(expr, vars);
+      // 表达式里一个变量都没命中时保留原样，和变量占位符行为一致。
+      if (!source && !/^[\s+]*(['"])/.test(expr.trim())) return match;
+      const digest = createHash('md5').update(source).digest('hex');
+      return fn === 'md5hexUpper' ? digest.toUpperCase() : digest;
+    }
+  );
+  return withHashes.replace(/\$\{(\w+)\}/g, (match, name: string) => {
     if (name === 'keywordRaw') return vars.keyword === undefined ? match : vars.keyword;
     const value = vars[name as TemplateVar];
     if (value === undefined || value === null || value === '') return match;

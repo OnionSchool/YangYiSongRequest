@@ -1,0 +1,23 @@
+{
+  "_comment": "QQ 音乐模板音源（官方公开搜索，已实测 2026-11）。搜索链路完整含封面，播放仍走 meting。",
+  "type": "template",
+  "name": "QQ 音乐官方搜索（lx 转换）",
+  "platforms": ["qq"],
+  "capabilities": ["search"],
+  "priority": 10,
+  "searchUrlTemplate": "https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w=${keyword}&format=json&p=${page}&n=20&cr=1",
+  "fieldMap": {
+    "id": "songmid",
+    "title": "songname",
+    "artist": "singer.0.name",
+    "album": "albumname",
+    "duration": "interval",
+    "list": "data.song.list"
+  },
+  "notes": [
+    "官方 Web 搜索接口，无需登录，返回标准 JSON",
+    "platformId 是 songmid（字母数字混合），meting 协议同样使用 songmid，两者互通",
+    "封面可按 albummid 拼接：https://y.qq.com/music/photo_new/T002R300x300M000{albummid}.jpg，但 cover 字段无法表达拼接逻辑，留空由 meting 补齐",
+    "播放走 meting（vkey 签名），本配置价值在于更全的搜索元数据（专辑/时长）和更高的可用性"
+  ]
+}

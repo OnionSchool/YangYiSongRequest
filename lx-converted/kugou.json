@@ -1,0 +1,27 @@
+{
+  "_comment": "酷狗模板音源（官方接口，已实测 2026-11 全链路）。搜索+免费曲目播放均可直接用。",
+  "type": "template",
+  "name": "酷狗官方接口（lx 转换）",
+  "platforms": ["kugou"],
+  "capabilities": ["search", "download"],
+  "priority": 10,
+  "searchUrlTemplate": "https://mobileservice.kugou.com/api/v3/search/song?format=json&keyword=${keyword}&page=${page}&pagesize=20&showtype=1",
+  "audioUrlTemplate": "https://trackercdn.kugou.com/i/v2/?cmd=25&pid=1&behavior=play&hash=${id}&key=${md5hex(${id} + \"kgcloudv2\")}",
+  "fieldMap": {
+    "id": "hash",
+    "title": "songname",
+    "artist": "singername",
+    "album": "album_name",
+    "duration": "duration",
+    "list": "data.info",
+    "audio": "url.0"
+  },
+  "notes": [
+    "搜索为官方移动端公开接口，返回标准 JSON，字段稳定",
+    "platformId 是 hash 型（32 位十六进制），不是数字 id",
+    "播放链路：tracker 接口签名 key=md5(hash+\"kgcloudv2\")，是公开静态算法，模板内核的 md5hex 占位符原生支持",
+    "播放响应 url 字段是数组（多 CDN 镜像），audio 映射 url.0 取第一条",
+    "实测免费曲目返回 status:1 + 完整 CDN 直链（HEAD 200 audio/mpeg）；付费曲目（pay_type=3）返回付费错误，属预期",
+    "VIP/付费曲目无法播放，需曲目本身是免费资源"
+  ]
+}

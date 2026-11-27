@@ -1,0 +1,24 @@
+{
+  "_comment": "咪咕模板音源（官方公开搜索，已实测 2026-11）。搜索链路完整；播放见 notes。",
+  "type": "template",
+  "name": "咪咕官方搜索（lx 转换）",
+  "platforms": ["migu"],
+  "capabilities": ["search"],
+  "priority": 10,
+  "searchUrlTemplate": "https://pd.musicapp.migu.cn/MIGUM2.0/v1.0/content/search_all.do?text=${keyword}&pageNo=${page}&pageSize=20&searchSwitch=%7B%22song%22%3A1%7D",
+  "fieldMap": {
+    "id": "copyrightId",
+    "title": "name",
+    "artist": "singers.0.name",
+    "album": "albums.0.name",
+    "cover": "imgItems.0.img",
+    "list": "songResultData.result"
+  },
+  "notes": [
+    "官方 PD 接口，返回标准 JSON",
+    "platformId 用 copyrightId（播放/详情接口均以它为键），不是数字 id",
+    "搜索响应不含时长字段，mapSongRecord 会返回 undefined，属正常缺失",
+    "singers/albums/imgItems 是数组，用 .0 索引取首项",
+    "播放端点未覆盖：所有公开 listen-urls 路由实测返回「路由请求不支持」，咪咕播放目前只能靠跨平台兜底"
+  ]
+}
