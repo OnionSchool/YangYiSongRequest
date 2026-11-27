@@ -8,8 +8,56 @@ import type { JsonValue } from '../../../utils/music-templates';
 import { parseLooseJson } from '../../../utils/music-sources';
 
 const PROBE_TIMEOUT_MS = 8_000;
+const FETCH_TIMEOUT_MS = 10_000;
 const MAX_SCRIPT_BYTES = 512 * 1024;
 const PROBE_KEYWORD = '周杰伦';
+
+/**
+ * 从远程地址下载脚本文本。走 external-url 的 SSRF 白名单校验，
+ * 下载内容与直接粘贴脚本是同一安全模型：只当文本分析，绝不执行。
+ */
+/** GitHub/Gitee 的 blob 页面链接转成 raw 直链，管理员可以直接粘浏览器里的地址。 */
+function normalizeScriptUrl(url: string): string {
+  const githubBlob = url.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+  if (githubBlob) {
+    return `https://raw.githubusercontent.com/${githubBlob[1]}/${githubBlob[2]}/${githubBlob[3]}/${githubBlob[4]}`;
+  }
+  const giteeBlob = url.match(/^https?:\/\/gitee\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
+  if (giteeBlob) {
+    return `https://gitee.com/${giteeBlob[1]}/${giteeBlob[2]}/raw/${giteeBlob[3]}/${giteeBlob[4]}`;
+  }
+  return url;
+}
+
+async function fetchScriptFromUrl(rawUrl: string): Promise<string> {
+  const normalizedUrl = normalizeScriptUrl(rawUrl);
+  let host: string;
+  try {
+    host = new URL(normalizedUrl).hostname;
+  } catch {
+    throw badRequest('BAD_SCRIPT_URL', '脚本地址不是合法的 URL');
+  }
+  await validateExternalUrl(normalizedUrl, [host]);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetchExternal(normalizedUrl, { signal: controller.signal }, [host]);
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw badRequest('SCRIPT_FETCH_FAILED', `脚本下载失败（HTTP ${response.status}）`);
+    }
+    const text = await response.text();
+    if (!text.trim()) throw badRequest('SCRIPT_EMPTY', '下载到的内容为空');
+    return text;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw badRequest('SCRIPT_FETCH_TIMEOUT', '脚本下载超时');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * 把 lx 音源脚本翻译成模板音源配置。
@@ -24,15 +72,26 @@ export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
   requireSuper(event);
 
-  const body = (await readBody(event)) as { script?: unknown; probe?: unknown } | null;
-  if (typeof body?.script !== 'string' || !body.script.trim()) {
-    throw badRequest('BAD_SCRIPT', '请提供脚本内容');
+  const body = (await readBody(event)) as {
+    script?: unknown;
+    url?: unknown;
+    probe?: unknown;
+  } | null;
+
+  // 两种输入：直接粘贴脚本内容，或给一个远程脚本地址由服务端代下载。
+  let script: string;
+  if (typeof body?.script === 'string' && body.script.trim()) {
+    script = body.script;
+  } else if (typeof body?.url === 'string' && body.url.trim()) {
+    script = await fetchScriptFromUrl(body.url.trim());
+  } else {
+    throw badRequest('BAD_SCRIPT', '请提供脚本内容或脚本地址');
   }
-  if (Buffer.byteLength(body.script, 'utf8') > MAX_SCRIPT_BYTES) {
+  if (Buffer.byteLength(script, 'utf8') > MAX_SCRIPT_BYTES) {
     throw badRequest('SCRIPT_TOO_LARGE', '脚本过大，超过 512KB 上限');
   }
 
-  const analysis = analyzeLxScript(body.script);
+  const analysis = analyzeLxScript(script);
   const result: Record<string, unknown> = { ...analysis };
 
   if (body.probe === false || analysis.obfuscated) {

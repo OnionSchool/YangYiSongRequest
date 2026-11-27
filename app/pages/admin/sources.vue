@@ -135,45 +135,61 @@ const lxOtherCandidates = computed(() => {
   return report.candidates.filter((candidate) => candidate.template !== probed);
 });
 
-async function onLxFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  input.value = '';
-  if (!file) return;
+/** 解析结果的公共回填逻辑：名称、平台、搜索模板、字段映射。 */
+function applyLxReport(report: LxImportResult) {
+  lxReport.value = report;
+  // 名称与平台自动回填，管理员仍可手改。
+  if (!newApi.value.name && report.scriptName) newApi.value.name = report.scriptName;
+  if (report.platforms.length > 0) {
+    newApi.value.platforms = report.platforms.filter((platform) =>
+      SOURCES.some((source) => source.id === platform)
+    );
+  }
+  if (report.probe?.ok && report.probe.template) {
+    newApi.value.searchUrlTemplate = report.probe.template;
+    if (report.probe.fieldMap) newApi.value.fieldMap = report.probe.fieldMap;
+  } else {
+    // 探测失败时仍填入最优搜索候选，便于管理员手工修正。
+    const fallback = report.candidates.find(
+      (candidate) => candidate.kind === 'search' && candidate.unresolved.length === 0
+    );
+    if (fallback && !newApi.value.searchUrlTemplate) {
+      newApi.value.searchUrlTemplate = fallback.template;
+    }
+  }
+  if (report.obfuscated) {
+    apiMessage.value = '脚本经过混淆，无法自动提取，请手工填写模板';
+  }
+}
+
+async function runLxImport(input: { script?: string; url?: string }) {
   lxImporting.value = true;
   lxReport.value = null;
   apiMessage.value = null;
   try {
-    const script = await file.text();
-    const report = await importLxScript(script);
-    lxReport.value = report;
-    // 名称与平台自动回填，管理员仍可手改。
-    if (!newApi.value.name && report.scriptName) newApi.value.name = report.scriptName;
-    if (report.platforms.length > 0) {
-      newApi.value.platforms = report.platforms.filter((platform) =>
-        SOURCES.some((source) => source.id === platform)
-      );
-    }
-    if (report.probe?.ok && report.probe.template) {
-      newApi.value.searchUrlTemplate = report.probe.template;
-      if (report.probe.fieldMap) newApi.value.fieldMap = report.probe.fieldMap;
-    } else {
-      // 探测失败时仍填入最优搜索候选，便于管理员手工修正。
-      const fallback = report.candidates.find(
-        (candidate) => candidate.kind === 'search' && candidate.unresolved.length === 0
-      );
-      if (fallback && !newApi.value.searchUrlTemplate) {
-        newApi.value.searchUrlTemplate = fallback.template;
-      }
-    }
-    if (report.obfuscated) {
-      apiMessage.value = '脚本经过混淆，无法自动提取，请手工填写模板';
-    }
+    applyLxReport(await importLxScript(input));
   } catch (error) {
     apiMessage.value = error instanceof Error ? error.message : '脚本解析失败';
   } finally {
     lxImporting.value = false;
   }
+}
+
+async function onLxFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  const script = await file.text();
+  await runLxImport({ script });
+}
+
+const lxUrl = ref('');
+async function onLxUrlImport() {
+  const url = lxUrl.value.trim();
+  if (!url) return;
+  lxUrl.value = '';
+  await runLxImport({ url });
 }
 
 function applyLxCandidate(candidate: LxImportCandidate) {
@@ -463,6 +479,22 @@ onMounted(load);
               导入 lx 音源脚本
               <input type="file" accept=".js,.txt" class="hidden" @change="onLxFile" />
             </label>
+            <span class="text-xs text-ink-faint">或</span>
+            <input
+              v-model="lxUrl"
+              type="url"
+              class="w-64 rounded-lg border border-rule bg-paper px-2 py-1.5 font-mono text-xs focus:border-ink-faint focus:outline-none"
+              placeholder="https://…/latest.js（支持 GitHub/Gitee 页面链接）"
+              @keydown.enter.prevent="onLxUrlImport"
+            />
+            <button
+              type="button"
+              class="rounded-lg border border-rule bg-paper px-3 py-1.5 text-sm font-medium hover:border-ink-faint disabled:opacity-50"
+              :disabled="lxImporting || !lxUrl.trim()"
+              @click="onLxUrlImport"
+            >
+              从 URL 导入
+            </button>
             <span v-if="lxImporting" class="text-sm text-ink-faint">正在解析与探测…</span>
             <span class="text-xs text-ink-faint">
               自动提取接口地址、猜测平台并推断字段映射；混淆或加密脚本无法还原

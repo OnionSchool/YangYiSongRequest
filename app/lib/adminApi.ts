@@ -443,8 +443,8 @@ export interface LxImportResult {
   };
 }
 
-export const importLxScript = (script: string) =>
-  post<LxImportResult>('/api/admin/meting/import-lx', { script });
+export const importLxScript = (input: { script?: string; url?: string }) =>
+  post<LxImportResult>('/api/admin/meting/import-lx', input);
 
 export const readUsers = () => apiFetch<AdminUserRow[]>('/api/admin/users');
 export const createUser = (body: {
