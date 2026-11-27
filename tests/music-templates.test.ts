@@ -285,3 +285,15 @@ describe('renderFieldTemplate 封面模板', () => {
     expect(renderFieldTemplate('${imgItems.0.img}', record)).toContain('a.test');
   });
 });
+
+describe('服务端分页占位符', () => {
+  it('page0 渲染为零基页码', () => {
+    expect(renderTemplate('https://x.test/?pn=${page0}', { page0: 0 })).toContain('pn=0');
+  });
+
+  it('offset 渲染为条目偏移', () => {
+    expect(renderTemplate('https://x.test/?offset=${offset}', { offset: 40 })).toContain(
+      'offset=40'
+    );
+  });
+});

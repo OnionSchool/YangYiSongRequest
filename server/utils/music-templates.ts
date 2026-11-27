@@ -8,14 +8,18 @@
 
 import { createHash } from 'node:crypto';
 
-/** 模板占位符：`${keyword}` `${id}` `${page}` `${limit}` `${size}` */
-export const TEMPLATE_VARS = ['keyword', 'id', 'page', 'limit', 'size'] as const;
+/** 模板占位符：`${keyword}` `${id}` `${page}` `${limit}` `${size}`；搜索另注入 `${page0}` `${offset}` 供服务端分页端点使用 */
+export const TEMPLATE_VARS = ['keyword', 'id', 'page', 'page0', 'offset', 'limit', 'size'] as const;
 export type TemplateVar = (typeof TEMPLATE_VARS)[number];
 
 export interface TemplateVars {
   keyword?: string;
   id?: string;
   page?: number;
+  /** 零基页码（page - 1），供酷我 pn= 等零基分页参数使用。 */
+  page0?: number;
+  /** 条目偏移量 ((page - 1) * 20)，供网易云 offset= 等偏移分页参数使用。 */
+  offset?: number;
   limit?: number;
   size?: number | string;
   /** 允许额外的 record 字段键（封面模板用），不参与内置变量校验。 */

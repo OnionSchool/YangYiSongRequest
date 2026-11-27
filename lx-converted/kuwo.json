@@ -5,7 +5,7 @@
   "platforms": ["kuwo"],
   "capabilities": ["search", "download"],
   "priority": 10,
-  "searchUrlTemplate": "https://search.kuwo.cn/r.s?all=${keyword}&ft=music&itemset=web_2013&client=kt&pn=0&rn=20&rformat=json&encoding=utf8",
+  "searchUrlTemplate": "https://search.kuwo.cn/r.s?all=${keyword}&ft=music&itemset=web_2013&client=kt&pn=${page0}&rn=20&rformat=json&encoding=utf8",
   "audioUrlTemplate": "https://musicapi.haitangw.net/music/kw.php?type=mp3&id=${id}&level=320k",
   "fieldMap": {
     "id": "DC_TARGETID",
@@ -16,6 +16,7 @@
     "list": "abslist"
   },
   "notes": [
+    "pn 是零基页码，用 ${page0} 占位符（第 1 页渲染为 0）",
     "封面用 coverUrlTemplate 拼接 web_albumpic_short 字段，无需额外 fieldMap.cover",
     "官方搜索接口，返回单引号伪 JSON，内核 parseLooseJson 已兼容",
     "⚠️ artist 必须映射 ARTIST（中文艺名，20/20 有值）；AARTIST 是英文艺名且多数条目为空，映射错会导致大面积歌手空白",

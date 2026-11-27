@@ -639,7 +639,15 @@ export function parseLooseJson(text: string): JsonValue {
 async function templateFetchJson(
   source: SourceId,
   template: string,
-  vars: { id?: string; keyword?: string; page?: number; limit?: number; size?: number | string }
+  vars: {
+    id?: string;
+    keyword?: string;
+    page?: number;
+    page0?: number;
+    offset?: number;
+    limit?: number;
+    size?: number | string;
+  }
 ): Promise<JsonValue> {
   const target = renderTemplate(template, vars);
   let host: string;
@@ -704,9 +712,15 @@ async function templateSearch(
   let lastError: unknown;
   for (const api of apis) {
     try {
-      const data = await templateFetchJson(source, api.searchUrlTemplate as string, {
+      const templateText = api.searchUrlTemplate as string;
+      // 服务端分页占位符：模板里出现 ${page0}（零基页码）或 ${offset}（条目偏移）
+      // 时认为端点自己负责分页，跳过本地切片，否则第 2 页起会被切空。
+      const serverPaged = /\$\{(?:page0|offset)\}/.test(templateText);
+      const data = await templateFetchJson(source, templateText, {
         keyword,
         page,
+        page0: page - 1,
+        offset: (page - 1) * PAGE_SIZE,
       });
       const map = parseFieldMap(api.fieldMap);
       const records = extractSongRecords(data, map);
@@ -723,7 +737,8 @@ async function templateSearch(
       }
 
       const start = (page - 1) * PAGE_SIZE;
-      const slice = pairs.slice(start, start + PAGE_SIZE);
+      // 端点已按页返回时不再本地切片；否则保持原行为（模板只拿第一页然后切）。
+      const slice = serverPaged ? pairs : pairs.slice(start, start + PAGE_SIZE);
       return {
         source,
         keyword,

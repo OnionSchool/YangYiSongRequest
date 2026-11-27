@@ -1,23 +1,25 @@
 {
   "_comment": "网易云模板音源（已实测 2026-11，可直接导入）。来源：lx 脚本 helloworld/ikun/feichangdao 提取 + GDStudio 聚合搜索。后台「新增音源」选 template 后逐项填入。",
   "type": "template",
-  "name": "网易云聚合解析（lx 转换）",
+  "name": "网易云官方+聚合（lx 转换）",
   "platforms": ["netease"],
   "capabilities": ["search", "download"],
   "priority": 10,
-  "searchUrlTemplate": "https://music-api.gdstudio.xyz/api.php?types=search&source=netease&name=${keyword}&count=20&pages=${page}",
+  "searchUrlTemplate": "https://music.163.com/api/search/get/web?s=${keyword}&type=1&offset=${offset}&limit=20",
   "audioUrlTemplate": "https://musicapi.haitangw.net/music/wy.php?type=mp3&id=${id}&level=320k",
   "fieldMap": {
+    "list": "result.songs",
     "id": "id",
     "title": "name",
-    "artist": "artist.0",
-    "album": "album",
-    "cover": "pic_id"
+    "artist": "artists.0.name",
+    "album": "album.name",
+    "duration": "duration"
   },
   "notes": [
+    "搜索用官方公开接口 music.163.com/api/search/get/web：20/20 带毫秒级时长、专辑、数字 id",
+    "数字 id 与 meting 协议完全互通——混配时本项目会自动用本配置富化 meting 搜索缺失的元数据",
+    "duration 为毫秒，内核 normalizeDurationMs 对 >=10000 的数值按毫秒直用，不会误乘 1000",
     "音频端点 302 直跳网易 CDN，实测 200 完整音频",
-    "artist 是数组，artist.0 取第一位歌手；合唱曲目只保留首歌手",
-    "备选音频端点（JSON 形态，url 字段）：http://103.79.184.97/api/music/url?platform=wy&songId=${id}&quality=320k&key=6C1F-53W0-GRKI-EVFG ——裸 IP 第三方服务，稳定性无保障",
-    "若已有 Meting 网易音源，可只取本配置的 audioUrlTemplate 补足音质"
+    "备选音频端点（JSON 形态，url 字段）：http://103.79.184.97/api/music/url?platform=wy&songId=${id}&quality=320k&key=6C1F-53W0-GRKI-EVFG ——裸 IP 第三方服务，稳定性无保障"
   ]
 }
