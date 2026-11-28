@@ -16,6 +16,14 @@ export function shanghaiTime(at: Date = new Date()): string {
   return new Date(at.getTime() + OFFSET_MS).toISOString().slice(11, 16);
 }
 
+/** 上海时区的本周一零点（一周从周一开始算，和学校作息一致） */
+export function shanghaiWeekStart(at: Date = new Date()): Date {
+  const today = shanghaiDate(at);
+  const weekday = new Date(`${today}T00:00:00.000Z`).getUTCDay();
+  const offset = (weekday + 6) % 7;
+  return new Date(`${addDays(today, -offset)}T00:00:00.000+08:00`);
+}
+
 export function addDays(date: string, days: number): string {
   const base = new Date(`${date}T00:00:00.000Z`);
   base.setUTCDate(base.getUTCDate() + days);

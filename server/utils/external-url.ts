@@ -113,7 +113,8 @@ function isPrivateAddress(address: string): boolean {
   const mappedIpv4 = address.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i)?.[1];
   if (mappedIpv4) return isPrivateAddress(mappedIpv4);
   if (isIP(address) === 4) {
-    const [first, second, third] = address.split('.').map(Number);
+    // isIP() === 4 已经保证是四段点分数字，这里不会缺段
+    const [first = 0, second = 0, third = 0] = address.split('.').map(Number);
     return (
       first === 0 ||
       first === 10 ||
@@ -216,7 +217,7 @@ async function fetchValidatedExternal(
     const response = (await undiciFetch(validated.url, {
       ...init,
       dispatcher,
-    })) as unknown as Response;
+    } as Parameters<typeof undiciFetch>[1])) as unknown as Response;
     if (!response.body) {
       closeDispatcher();
       return response;

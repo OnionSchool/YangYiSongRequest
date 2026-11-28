@@ -240,8 +240,14 @@ export const checkContent = (body: Pick<SubmitBody, 'title' | 'artist' | 'reques
     body: JSON.stringify(body),
   });
 
+export interface SubmitResult {
+  queryCode: string;
+  /** merged = 这首歌已有人在等：self 是本人重复点，other 是其他同学先点了 */
+  merged: 'self' | 'other' | null;
+}
+
 export const submitRequest = (body: SubmitBody) =>
-  apiFetch<{ queryCode: string }>('/api/request', { method: 'POST', body: JSON.stringify(body) });
+  apiFetch<SubmitResult>('/api/request', { method: 'POST', body: JSON.stringify(body) });
 
 export const lookupRequest = (code: string) =>
   apiFetch<LookupResult>(

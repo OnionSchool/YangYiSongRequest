@@ -25,6 +25,11 @@ const name = ref('');
 const submitting = ref(false);
 const failure = ref<string | null>(null);
 const code = ref<string | null>(null);
+const merged = ref<'self' | 'other' | null>(null);
+// PoW 进度：算了多少次、花了多少毫秒，手机上有动静才知道没卡死
+const powProgress = ref<{ tried: number; elapsedMs: number } | null>(null);
+let powWorker: Worker | null = null;
+let cancelSolve: (() => void) | null = null;
 
 const classes = computed(() =>
   Array.from({ length: site.classCounts[grade.value] ?? 23 }, (_, index) => index + 1)
@@ -36,9 +41,24 @@ watch(
   () => {
     code.value = null;
     failure.value = null;
+    merged.value = null;
     submitting.value = false;
+    cancelPow();
   }
 );
+
+/** 取消按钮或换歌时收工：杀掉 worker，别让后台还在空转耗电 */
+function cancelPow(): void {
+  powWorker?.terminate();
+  powWorker = null;
+  cancelSolve?.();
+  cancelSolve = null;
+  powProgress.value = null;
+  if (submitting.value) {
+    submitting.value = false;
+    failure.value = '验证已取消';
+  }
+}
 
 watch(grade, () => {
   const max = site.classCounts[grade.value] ?? 23;
@@ -70,12 +90,14 @@ async function send(): Promise<void> {
     const contextHash = await sha256(requestContextHash(body));
     const challenge = await createPowChallenge(contextHash);
     const nonce = await solvePow(challenge.challengeId, contextHash, challenge.difficulty);
+    powProgress.value = null;
     const result = await submitRequest({
       ...body,
       challengeId: challenge.challengeId,
       nonce,
       contextHash,
     });
+    merged.value = result.merged;
     code.value = result.queryCode;
   } catch (error) {
     failure.value = error instanceof ApiError ? error.message : '提交失败，再试一次';
@@ -89,13 +111,24 @@ function solvePow(challengeId: string, contextHash: string, difficulty: number):
     const worker = new Worker(new URL('../workers/pow.worker.ts', import.meta.url), {
       type: 'module',
     });
+    powWorker = worker;
+    cancelSolve = () => reject(new Error('验证已取消'));
     const timeout = window.setTimeout(() => {
       worker.terminate();
-      reject(new Error('验证超时'));
-    }, 60_000);
-    worker.onmessage = (event: MessageEvent<{ nonce: string }>) => {
+      reject(new Error('验证超时，再试一次'));
+    }, 90_000);
+    worker.onmessage = (
+      event: MessageEvent<
+        { type: 'done'; nonce: string } | { type: 'progress'; tried: number; elapsedMs: number }
+      >
+    ) => {
+      if (event.data.type === 'progress') {
+        powProgress.value = { tried: event.data.tried, elapsedMs: event.data.elapsedMs };
+        return;
+      }
       window.clearTimeout(timeout);
       worker.terminate();
+      powWorker = null;
       resolve(event.data.nonce);
     };
     worker.onerror = () => {
@@ -143,7 +176,13 @@ async function copyCode(): Promise<void> {
       <div class="my-4 tick-rule" />
 
       <template v-if="code">
-        <p class="text-sm">点好了。凭这个码查审核结果，记下来：</p>
+        <p v-if="merged === 'self'" class="text-sm">
+          这首歌你之前已经点过了，不用重复点——用原来的查询码查进度就行：
+        </p>
+        <p v-else-if="merged === 'other'" class="text-sm">
+          这首歌已经有同学点过了，正在排队审核，不用重复点。它播出时你就能听到，进度可以用这个码查：
+        </p>
+        <p v-else class="text-sm">点好了。凭这个码查审核结果，记下来：</p>
         <p class="stamp mt-3 font-mono text-3xl tracking-[0.18em] tabular-nums">{{ code }}</p>
         <div class="mt-4 flex gap-2">
           <button
@@ -202,9 +241,30 @@ async function copyCode(): Promise<void> {
 
         <p v-if="failure" class="text-sm text-orange-deep">{{ failure }}</p>
 
-        <button type="submit" class="btn-primary w-full py-3" :disabled="submitting">
-          {{ submitting ? '正在验证并提交…' : '确认点这首' }}
-        </button>
+        <template v-if="submitting">
+          <div class="rounded-control border border-rule px-3 py-2">
+            <p class="text-sm">
+              正在验证并提交…
+              <template v-if="powProgress">
+                已计算
+                <span class="font-mono tabular-nums">{{ powProgress.tried.toLocaleString() }}</span>
+                次，用了
+                <span class="font-mono tabular-nums">{{
+                  Math.ceil(powProgress.elapsedMs / 1000)
+                }}</span>
+                秒
+              </template>
+            </p>
+            <button
+              type="button"
+              class="mt-2 rounded-control border border-rule px-3 py-1 text-sm"
+              @click="cancelPow"
+            >
+              取消
+            </button>
+          </div>
+        </template>
+        <button v-else type="submit" class="btn-primary w-full py-3">确认点这首</button>
         <p class="text-xs text-ink-soft">
           提交前会进行浏览器验证。提交后会给一个 6 位查询码，审核通过并排好时段才会出现在播出单里。
         </p>

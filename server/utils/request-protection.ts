@@ -50,7 +50,11 @@ function ipHash(ip: string): string {
 }
 
 function difficultyFor(count: number): number {
-  return count >= 3 ? 5 : 4;
+  // 难度 5 意味着中低端手机要串行算上几十秒到几分钟，等于把真人挡在门外，
+  // 而脚本端一次哈希只要几微秒，对它们毫无作用。现在限额由设备令牌+IP 的
+  // 每周计数承担，PoW 只保留「不是零成本」的意义：一律难度 3（约几千次哈希）。
+  void count;
+  return 3;
 }
 
 export function createPowChallenge(

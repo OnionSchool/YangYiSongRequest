@@ -384,7 +384,10 @@ const pageCount = computed(() => Math.max(1, Math.ceil((currentTab.value?.total 
           填年级、班级、姓名就行，不用注册。播出单上只显示歌，不显示是谁点的。
         </li>
         <li v-else>现在是匿名点歌，什么都不用填。播出单上只显示歌。</li>
-        <li>每人每天最多点 2 首。</li>
+        <li v-if="site.requireIdentity">
+          同一时间只能有一首点歌在等播出，播出、被驳回或取消后才能再点。
+        </li>
+        <li v-else>每人每周最多点 1 首。</li>
         <li>提交后会拿到一个 6 位查询码，凭它查审核结果，记得存下来。</li>
         <li>审核通过并排好时段的歌才会出现在播出单里。周末和法定假日不播。</li>
       </ul>

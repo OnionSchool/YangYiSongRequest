@@ -2,11 +2,16 @@ import { randomInt } from 'node:crypto';
 import { count, eq } from 'drizzle-orm';
 import { db, sqlite } from './db';
 import { songRequest, schedule, broadcastSlot } from './schema';
-import { GRADE_LABELS, encodeWordList, isGrade, isRequestStatus } from './domain';
+import { GRADE_LABELS, STATUS_LABELS, encodeWordList, isGrade, isRequestStatus } from './domain';
 import type { Grade, RequestStatus, SourceId } from './domain';
 import { badRequest, notFound, tooMany } from './errors';
-import { IP_DAILY_LIMIT, isInternalRateLimitEnabled } from './rate-limits';
-import { shanghaiDayStart } from './time';
+import {
+  DEVICE_WEEKLY_LIMIT,
+  IP_DAILY_LIMIT,
+  IP_WEEKLY_LIMIT,
+  isInternalRateLimitEnabled,
+} from './rate-limits';
+import { shanghaiDayStart, shanghaiWeekStart } from './time';
 import { isValid6DigitCode } from './runtime';
 import { getSource, sourceAllowsClientMetadata } from './music-sources';
 import { findBannedHits, findContentScriptHits } from './banned-words';
@@ -72,11 +77,39 @@ function assertNoActiveIdentityRequest(activeCount: number): void {
   }
 }
 
+/**
+ * 每周限额检查。匿名模式用设备令牌（每周 1 首）+ IP 兜底（每周 5 首，
+ * 放宽是因为校园 NAT 下多人共享出口 IP，只拦明显异常）；实名模式只靠 IP 兜底，
+ * 身份维度的限制由 assertNoActiveIdentityRequest 的「同时只能一首在途」承担。
+ */
+function assertWeeklyLimits(deviceUsed: number, ipWeekUsed: number, anonymous: boolean): void {
+  if (!isInternalRateLimitEnabled()) return;
+  if (anonymous && deviceUsed >= DEVICE_WEEKLY_LIMIT) {
+    throw tooMany('RATE_LIMIT_WEEK', '每人每周最多点一首歌，下周再来', {
+      limit: DEVICE_WEEKLY_LIMIT,
+      window: 'week',
+    });
+  }
+  if (ipWeekUsed >= IP_WEEKLY_LIMIT) {
+    throw tooMany('RATE_LIMIT_IP', '这个网络本周点歌次数已达上限，换个网络或下周再来', {
+      limit: IP_WEEKLY_LIMIT,
+      window: 'week',
+    });
+  }
+}
+
+export interface SubmitResult {
+  queryCode: string;
+  /** merged = 这首歌已有人在等：self 是本人重复点，other 是其他同学先点了 */
+  merged: 'self' | 'other' | null;
+}
+
 export async function submitRequest(
   input: Record<string, unknown>,
   ip: string,
-  userAgent?: string
-): Promise<{ queryCode: string }> {
+  userAgent?: string,
+  deviceToken?: string | null
+): Promise<SubmitResult> {
   const site = await readSite();
   if (!site.requestsOpen) throw badRequest('REQUESTS_CLOSED', '点歌通道现在关着，等台里再开');
 
@@ -135,7 +168,29 @@ export async function submitRequest(
     try {
       const qc = newQueryCode();
       const since = Math.floor(shanghaiDayStart().getTime() / 1000);
+      const weekSince = Math.floor(shanghaiWeekStart().getTime() / 1000);
+      let mergedResult: SubmitResult | null = null;
       sqlite.transaction(() => {
+        // 同一首歌已有人在等：不新增记录，直接把组里最早的活跃查询码还给学生。
+        // 先查自己有没有点过——自己重复点给 self 提示；别人先点的也算并入，不消耗本周名额。
+        const existing = sqlite
+          .prepare(
+            'SELECT r."queryCode", r."submitDevice", r."submitIp" FROM "SongRequest" r\n' +
+              'JOIN "SongRequestGroup" g ON r."groupId" = g."id"\n' +
+              'WHERE g."source" = ? AND g."platformId" = ? AND\n' +
+              '(r."status" = \'PENDING\' OR (r."status" = \'SCHEDULED\' AND r."playbackStatus" != \'PLAYED\'))\n' +
+              'ORDER BY r."createdAt" ASC LIMIT 1'
+          )
+          .get(song.source, song.platformId) as
+          { queryCode: string; submitDevice: string | null; submitIp: string } | undefined;
+        if (existing) {
+          const isSelf =
+            (deviceToken != null && existing.submitDevice === deviceToken) ||
+            existing.submitIp === ip;
+          mergedResult = { queryCode: existing.queryCode, merged: isSelf ? 'self' : 'other' };
+          return;
+        }
+
         const ipUsed = (
           sqlite
             .prepare(
@@ -144,6 +199,25 @@ export async function submitRequest(
             .get(ip, since) as { count: number }
         ).count;
         assertDailyLimits(ipUsed);
+        const anonymous = !identity;
+        const deviceUsed =
+          anonymous && deviceToken
+            ? (
+                sqlite
+                  .prepare(
+                    'SELECT COUNT(*) AS "count" FROM "SongRequest" WHERE "submitDevice" = ? AND "createdAt" >= ?'
+                  )
+                  .get(deviceToken, weekSince) as { count: number }
+              ).count
+            : 0;
+        const ipWeekUsed = (
+          sqlite
+            .prepare(
+              'SELECT COUNT(*) AS "count" FROM "SongRequest" WHERE "submitIp" = ? AND "createdAt" >= ?'
+            )
+            .get(ip, weekSince) as { count: number }
+        ).count;
+        assertWeeklyLimits(deviceUsed, ipWeekUsed, anonymous);
         if (identity) {
           const activeCount = (
             sqlite
@@ -177,7 +251,7 @@ export async function submitRequest(
         }
         sqlite
           .prepare(
-            'INSERT INTO "SongRequest" ("id", "queryCode", "source", "platformId", "groupId", "title", "artist", "album", "durationMs", "coverUrl", "grade", "classNo", "requesterName", "flaggedWords", "submitIp", "submitUserAgent") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO "SongRequest" ("id", "queryCode", "source", "platformId", "groupId", "title", "artist", "album", "durationMs", "coverUrl", "grade", "classNo", "requesterName", "flaggedWords", "submitIp", "submitDevice", "submitUserAgent") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
           )
           .run(
             `req_${crypto.randomUUID().substring(2, 11)}`,
@@ -195,10 +269,12 @@ export async function submitRequest(
             identity?.requesterName ?? null,
             encodeWordList(flagged),
             ip,
+            deviceToken ?? null,
             userAgent ?? null
           );
       })();
-      return { queryCode: qc };
+      if (mergedResult) return mergedResult;
+      return { queryCode: qc, merged: null };
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
     }
@@ -280,7 +356,7 @@ export async function lookupByCode(code: string): Promise<LookupView> {
   return {
     queryCode: row.queryCode,
     status,
-    statusLabel: status,
+    statusLabel: STATUS_LABELS[status],
     source: row.source,
     title: row.title,
     artist: row.artist,

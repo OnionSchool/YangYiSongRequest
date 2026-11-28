@@ -161,6 +161,7 @@ export const songRequest = table('SongRequest', {
   flaggedWords: text('flaggedWords').notNull().default('[]'),
   isManual: integer('isManual').notNull().default(0),
   submitIp: text('submitIp').notNull(),
+  submitDevice: text('submitDevice'),
   submitUserAgent: text('submitUserAgent'),
   createdAt: integer('createdAt')
     .notNull()

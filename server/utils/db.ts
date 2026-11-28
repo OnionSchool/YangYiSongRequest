@@ -36,7 +36,7 @@ export async function runMigrations(): Promise<void> {
       sqlite
         .prepare('SELECT "name" FROM "SchemaMigration"')
         .all()
-        .map((row: { name: string }) => row.name)
+        .map((row) => (row as { name: string }).name)
     );
     const recordMigration = sqlite.prepare('INSERT INTO "SchemaMigration" ("name") VALUES (?)');
     for (const name of migrations) {

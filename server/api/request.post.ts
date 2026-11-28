@@ -3,6 +3,7 @@ import { submitRequest } from '../utils/requests';
 import { getClientIp } from '../utils/request-ip';
 import { verifyAndConsumePow } from '../utils/request-protection';
 import type { RequestContext } from '../utils/request-protection';
+import { ensureDeviceToken } from '../utils/device-token';
 
 export default defineEventHandler(async (event) => {
   setHeader(event, 'Cache-Control', 'no-store');
@@ -21,6 +22,8 @@ export default defineEventHandler(async (event) => {
   }
 
   const ip = getClientIp(event);
+  // 匿名限额依赖设备令牌；取 PoW 挑战时一般已经发过，没有的话这里兜底签发
+  const deviceToken = ensureDeviceToken(event);
   const context: RequestContext & {
     challengeId?: unknown;
     nonce?: unknown;
@@ -40,6 +43,11 @@ export default defineEventHandler(async (event) => {
   };
   verifyAndConsumePow(context, ip);
 
-  const result = await submitRequest(input, ip, getRequestHeader(event, 'user-agent') ?? undefined);
+  const result = await submitRequest(
+    input,
+    ip,
+    getRequestHeader(event, 'user-agent') ?? undefined,
+    deviceToken
+  );
   return result;
 });
