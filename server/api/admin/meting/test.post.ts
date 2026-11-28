@@ -106,7 +106,14 @@ async function testTemplateSearch(parsed: {
   fieldMap: string | null;
 }) {
   const map = parseFieldMap(parsed.fieldMap);
-  const target = renderTemplate(parsed.searchUrlTemplate as string, { keyword: '周杰伦', page: 1 });
+  // 与线上 templateSearch 保持一致：服务端分页占位符 ${page0}/${offset} 也要注入，
+  // 否则占位符原样留在 URL 里（如 offset=${offset}），上游接口直接返回空结果。
+  const target = renderTemplate(parsed.searchUrlTemplate as string, {
+    keyword: '周杰伦',
+    page: 1,
+    page0: 0,
+    offset: 0,
+  });
   let host: string;
   try {
     host = new URL(target).hostname;

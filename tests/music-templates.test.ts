@@ -297,3 +297,22 @@ describe('服务端分页占位符', () => {
     );
   });
 });
+
+describe('管理员测试路径的分页占位符回归', () => {
+  // 回归：管理员测试接口曾只传 keyword/page，导致 ${offset} 原样残留在 URL 里，
+  // 网易云把非数字 offset 视为非法并返回空列表，管理员看到「未解析出歌曲」。
+  // 现在测试接口与线上 templateSearch 一致，必须注入 page0/offset。
+  it('注入 page0/offset 后模板无占位符残留', () => {
+    const target = renderTemplate(
+      'https://music.163.com/api/search/get/web?s=${keyword}&type=1&offset=${offset}&limit=20',
+      { keyword: '周杰伦', page: 1, page0: 0, offset: 0 }
+    );
+    expect(target).not.toContain('${');
+    expect(target).toContain('offset=0');
+  });
+
+  it('不注入时占位符原样残留（占位符缺失保留是有意设计）', () => {
+    const target = renderTemplate('https://x.test/?offset=${offset}', { keyword: 'a' });
+    expect(target).toContain('${offset}');
+  });
+});
